@@ -277,10 +277,21 @@ def render_separator() -> str:
     return "---"
 
 
-def render_footer(script_dir: str) -> list[str]:
-    return [
-        "---",
+def render_footer(script_dir: str, show_login: bool = False) -> list[str]:
+    lines = ["---"]
+    if show_login:
+        lines.append(
+            f"Login to Claude | bash=/usr/local/bin/claude param1=login "
+            f"terminal=true refresh=true sfimage=person.crop.circle.badge.plus size=13 color={COLORS['blue']}"
+        )
+    else:
+        lines.append(
+            f"Logout | bash=/usr/local/bin/claude param1=logout "
+            f"terminal=true refresh=true sfimage=person.crop.circle.badge.minus size=13 color={COLORS['dim']}"
+        )
+    lines.extend([
         f"Open Config | bash=open param1={script_dir}/config.json terminal=false "
         f"sfimage=gearshape size=13 color={COLORS['dim']}",
         f"Refresh | refresh=true sfimage=arrow.clockwise size=13 color={COLORS['dim']}",
-    ]
+    ])
+    return lines

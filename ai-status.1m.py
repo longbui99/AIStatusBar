@@ -29,6 +29,9 @@ from providers.rendering import (
     render_title_cycling,
 )
 
+# Shorter refresh interval when not authenticated (2 minutes instead of 30)
+RETRY_INTERVAL_SECS = 120
+
 
 def load_config() -> dict:
     config_path = SCRIPT_DIR / "config.json"
@@ -38,7 +41,19 @@ def load_config() -> dict:
         return json.load(f)
 
 
+def _needs_login(statuses: list[ProviderStatus]) -> bool:
+    """Check if any provider has an auth error suggesting login is needed."""
+    for s in statuses:
+        if s.error and ("No API key" in s.error or "401" in s.error or "Unauthorized" in s.error):
+            return True
+    if not statuses:
+        return False
+    return all(s.summary in ("--", "err") for s in statuses)
+
+
 def render(statuses: list[ProviderStatus]) -> None:
+    needs_login = _needs_login(statuses)
+
     if not statuses:
         print(f"Setup | sfimage=sparkle color=#FF9500 size=13")
         print("---")
@@ -105,7 +120,7 @@ def render(statuses: list[ProviderStatus]) -> None:
             print(f"  {s.error} | sfimage=exclamationmark.triangle color=#FF3B30 size=11")
 
     # Footer
-    for line in render_footer(str(SCRIPT_DIR)):
+    for line in render_footer(str(SCRIPT_DIR), show_login=needs_login):
         print(line)
 
 
