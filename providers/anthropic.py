@@ -1,0 +1,568 @@
+"""Anthropic (Claude) provider for AI Status Bar."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta
+from pathlib import Path
+
+from providers import MetricData, ProviderStatus, SpendData
+
+PROVIDER_KEY = "anthropic"
+DISPLAY_NAME = "CLD"
+
+API_BASE = "https://api.anthropic.com"
+API_VERSION = "2023-06-01"
+KEYCHAIN_SERVICE = "Claude Code-credentials"
+_CACHE_FILE = Path(__file__).resolve().parent.parent / ".usage_cache.json"
+
+# Anthropic tier detection: map RPM limits to known tiers and their monthly spend caps.
+# Source: https://docs.anthropic.com/en/api/rate-limits
+# The RPM limit on the count_tokens endpoint reflects the account tier.
+TIER_BY_RPM: dict[int, tuple[str, float]] = {
+    50: ("Free", 0),
+    1000: ("Build Tier 1", 100),
+    2000: ("Build Tier 2", 250),
+    4000: ("Build Tier 3", 1000),
+    8000: ("Build Tier 4", 5000),
+    16000: ("Scale", 0),  # Custom
+}
+
+
+def _read_keychain_creds() -> dict:
+    """Read Claude Code credentials from macOS Keychain.
+
+    Returns dict with keys: access_token, subscription_type, rate_limit_tier, expires_at.
+    """
+    try:
+        result = subprocess.run(
+            ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return {}
+        creds = json.loads(result.stdout.strip())
+        oauth = creds.get("claudeAiOauth", {})
+        return {
+            "access_token": oauth.get("accessToken", ""),
+            "subscription_type": oauth.get("subscriptionType", ""),
+            "rate_limit_tier": oauth.get("rateLimitTier", ""),
+            "expires_at": oauth.get("expiresAt", 0),
+            "scopes": oauth.get("scopes", []),
+        }
+    except Exception:
+        return {}
+
+
+# Known subscription plans: key -> (label, monthly_price)
+SUBSCRIPTION_INFO: dict[str, tuple[str, float]] = {
+    "free": ("Free", 0),
+    "pro": ("Pro", 20),
+    "team": ("Team", 25),
+    "enterprise": ("Enterprise", 0),
+    "max_5x": ("Max 5x", 100),
+    "max_20x": ("Max 20x", 200),
+}
+
+# Rate limit tier -> subscription key mapping
+TIER_TO_SUB: dict[str, str] = {
+    "default_claude_free": "free",
+    "default_claude_pro": "pro",
+    "default_claude_team": "team",
+    "default_claude_max_5x": "max_5x",
+    "default_claude_max_20x": "max_20x",
+}
+
+
+# Default thresholds — overridden by config.json
+_THRESHOLDS = {"yellow": 60, "orange": 80, "red": 100}
+
+
+def _set_thresholds(cfg: dict) -> None:
+    global _THRESHOLDS
+    t = cfg.get("thresholds", {})
+    if t:
+        _THRESHOLDS = {
+            "yellow": t.get("yellow", 60),
+            "orange": t.get("orange", 80),
+            "red": t.get("red", 100),
+        }
+
+
+def _pct_color(pct: float) -> str:
+    """Return color based on current usage percentage and configured thresholds."""
+    if pct >= _THRESHOLDS["red"]:
+        return "red"
+    if pct >= _THRESHOLDS["orange"]:
+        return "orange"
+    if pct >= _THRESHOLDS["yellow"]:
+        return "yellow"
+    return "green"
+
+
+def _forecast_color(utilization: float, resets_at: str, window_hours: float) -> str:
+    """Forecast color based on linear projection to end of window."""
+    try:
+        clean = resets_at.replace("+00:00", "").replace("Z", "")
+        reset_dt = datetime.fromisoformat(clean)
+        now = datetime.utcnow()
+        remaining_secs = (reset_dt - now).total_seconds()
+        total_secs = window_hours * 3600
+        elapsed_secs = total_secs - remaining_secs
+
+        if elapsed_secs <= 0:
+            return "green"
+
+        projected = utilization * (total_secs / elapsed_secs)
+
+        if projected >= _THRESHOLDS["red"]:
+            return "red"
+        if projected >= _THRESHOLDS["orange"]:
+            return "orange"
+        if projected >= _THRESHOLDS["yellow"]:
+            return "yellow"
+        return "green"
+    except Exception:
+        return _pct_color(utilization)
+
+
+_COLOR_RANK = {"white": 0, "green": 0, "yellow": 1, "orange": 2, "red": 3}
+
+
+def _to_bar_color(color: str) -> str:
+    """Map metric color to menu bar color. Green becomes white for the top bar."""
+    return "white" if color == "green" else color
+
+
+def _worst(a: str, b: str) -> str:
+    """Return the more severe color."""
+    return a if _COLOR_RANK.get(a, 0) >= _COLOR_RANK.get(b, 0) else b
+
+
+def _forecast_pct(utilization: float, resets_at: str, window_hours: float) -> float:
+    """Return projected utilization at end of window."""
+    try:
+        clean = resets_at.replace("+00:00", "").replace("Z", "")
+        reset_dt = datetime.fromisoformat(clean)
+        now = datetime.utcnow()
+        remaining_secs = (reset_dt - now).total_seconds()
+        total_secs = window_hours * 3600
+        elapsed_secs = total_secs - remaining_secs
+        if elapsed_secs <= 0:
+            return utilization
+        return utilization * (total_secs / elapsed_secs)
+    except Exception:
+        return utilization
+
+
+def fetch_status(config: dict, global_config: dict | None = None) -> ProviderStatus:
+    """Fetch Claude usage status."""
+    if global_config:
+        _set_thresholds(global_config)
+    api_key = config.get("api_key", "")
+    admin_key = config.get("admin_key", "")
+    budget = config.get("monthly_budget", 0)
+
+    # Auto-discover from Claude Code keychain
+    keychain_creds = _read_keychain_creds() if not api_key else {}
+    keychain_token = keychain_creds.get("access_token", "")
+
+    if not api_key and not admin_key and not keychain_token:
+        return ProviderStatus(
+            name="Claude (Anthropic)",
+            short_name=DISPLAY_NAME,
+            summary="--",
+            error="No API key configured",
+        )
+
+    metrics: list[MetricData] = []
+    spend_rows: list[SpendData] = []
+    spend_pct: float | None = None
+    spend_color = "green"
+    spend_forecast = ""
+    plan_label = ""
+    rate_limits: list[tuple[str, float, str]] = []
+    summary = ""
+    error = None
+    worst_color = "green"
+
+    # Admin key: fetch spend
+    if admin_key:
+        try:
+            spend = _fetch_spend(admin_key)
+            monthly = spend["month"]
+            spend_rows = [
+                SpendData("Today", _fmt_money(spend["today"])),
+                SpendData("This Week", _fmt_money(spend["week"])),
+                SpendData("This Month", _fmt_money(monthly)),
+            ]
+            if budget > 0:
+                pct = min(monthly / budget * 100, 100) if budget else 0
+                spend_pct = pct
+                spend_color = _pct_color(pct)
+                remaining = max(budget - monthly, 0)
+                spend_rows.append(SpendData("Remaining", _fmt_money(remaining)))
+                summary = f"{_fmt_money(monthly)}/{_fmt_money(budget)}"
+            else:
+                summary = f"{_fmt_money(monthly)}"
+        except Exception as e:
+            error = f"Spend API error: {e}"
+
+    # OAuth token path: fetch real usage via /api/oauth/usage
+    if not api_key and not admin_key and keychain_token:
+        tier = keychain_creds.get("rate_limit_tier", "")
+        sub = keychain_creds.get("subscription_type", "")
+        sub_key = TIER_TO_SUB.get(tier, sub)
+        sub_label, sub_price = SUBSCRIPTION_INFO.get(sub_key, (sub_key, 0))
+        plan_label = sub_label
+        try:
+            usage = _fetch_oauth_usage_cached(keychain_token)
+
+            five_h = usage.get("five_hour")
+            seven_d = usage.get("seven_day")
+            extra = usage.get("extra_usage")
+            worst_color = "green"
+            bar_parts = []
+
+            if five_h:
+                pct5 = five_h.get("utilization", 0)
+                reset5_raw = five_h.get("resets_at", "")
+                fc5 = _forecast_color(pct5, reset5_raw, 5)
+                fp5 = _forecast_pct(pct5, reset5_raw, 5)
+                worst_color = _worst(worst_color, fc5)
+                bar_parts.append(f"5h:{pct5:.0f}%")
+                metrics.append(
+                    MetricData(
+                        label="Session (5h)",
+                        short_label="5h",
+                        pct=pct5,
+                        forecast_pct=fp5,
+                        color=fc5,
+                        reset_label=_parse_reset(reset5_raw),
+                    )
+                )
+
+            if seven_d:
+                pct7 = seven_d.get("utilization", 0)
+                reset7_raw = seven_d.get("resets_at", "")
+                fc7 = _forecast_color(pct7, reset7_raw, 168)
+                fp7 = _forecast_pct(pct7, reset7_raw, 168)
+                worst_color = _worst(worst_color, fc7)
+                bar_parts.append(f"7d:{pct7:.0f}%")
+                metrics.append(
+                    MetricData(
+                        label="Weekly (7d)",
+                        short_label="7d",
+                        pct=pct7,
+                        forecast_pct=fp7,
+                        color=fc7,
+                        reset_label=_parse_reset(reset7_raw),
+                    )
+                )
+
+            sonnet = usage.get("seven_day_sonnet")
+            if sonnet:
+                pct_s = sonnet.get("utilization", 0)
+                reset_s_raw = sonnet.get("resets_at", "")
+                fc_s = _forecast_color(pct_s, reset_s_raw, 168)
+                fp_s = _forecast_pct(pct_s, reset_s_raw, 168)
+                worst_color = _worst(worst_color, fc_s)
+                metrics.append(
+                    MetricData(
+                        label="Sonnet (7d)",
+                        short_label="Son",
+                        pct=pct_s,
+                        forecast_pct=fp_s,
+                        color=fc_s,
+                        reset_label=_parse_reset(reset_s_raw),
+                        detail_only=True,
+                    )
+                )
+
+            if extra and extra.get("is_enabled"):
+                used = extra.get("used_credits", 0)
+                limit_val = extra.get("monthly_limit", 0)
+                epct = extra.get("utilization", 0)
+                now = datetime.utcnow()
+                day_of_month = now.day
+                days_in_month = 30
+                if day_of_month > 0:
+                    projected_pct = epct * (days_in_month / day_of_month)
+                else:
+                    projected_pct = epct
+                fc_e = _pct_color(projected_pct)
+                worst_color = _worst(worst_color, fc_e)
+                bar_parts.append(f"{_fmt_money(used)}/{_fmt_money(limit_val)}")
+                metrics.append(
+                    MetricData(
+                        label="Extra Credits",
+                        short_label="$",
+                        pct=epct,
+                        forecast_pct=projected_pct,
+                        color=fc_e,
+                        reset_label="month end",
+                        extra=f"{_fmt_money(used)} / {_fmt_money(limit_val)}",
+                    )
+                )
+
+            summary = " ".join(bar_parts) if bar_parts else "OK"
+
+        except Exception as e:
+            if sub_price > 0:
+                summary = f"{_fmt_money(sub_price)}/mo"
+            else:
+                summary = sub_label or "Active"
+            error = f"Usage API: {e}"
+
+    # Standard API key: fetch rate limits + auto-detect tier
+    if api_key:
+        try:
+            limits = _fetch_rate_limits(api_key)
+            if budget <= 0:
+                tier_name, tier_budget = _detect_tier(limits)
+                budget = tier_budget
+                if tier_name:
+                    plan_label = tier_name
+            if not summary:
+                rpm_rem = limits.get("requests_remaining", "?")
+                summary = f"{rpm_rem}rpm"
+            for prefix, label in [
+                ("requests", "RPM"),
+                ("input_tokens", "Input TPM"),
+                ("output_tokens", "Output TPM"),
+            ]:
+                lim = limits.get(f"{prefix}_limit")
+                rem = limits.get(f"{prefix}_remaining")
+                if lim is not None and rem is not None:
+                    try:
+                        lim_v, rem_v = int(lim), int(rem)
+                        used_pct = (lim_v - rem_v) / lim_v * 100 if lim_v else 0
+                        rate_limits.append(
+                            (label, used_pct, f"{_fmt_num(rem)}/{_fmt_num(lim)}")
+                        )
+                    except (ValueError, TypeError):
+                        rate_limits.append((label, 0, f"{rem}/{lim}"))
+        except Exception as e:
+            if not summary:
+                summary = "err"
+            error = f"Rate limit error: {e}"
+
+    return ProviderStatus(
+        name="Claude (Anthropic)",
+        short_name=DISPLAY_NAME,
+        summary=summary or "--",
+        color=_to_bar_color(worst_color),
+        error=error,
+        metrics=metrics,
+        spend_rows=spend_rows,
+        spend_pct=spend_pct,
+        spend_color=spend_color,
+        spend_forecast=spend_forecast,
+        plan_label=plan_label,
+        rate_limits=rate_limits,
+    )
+
+
+def _detect_tier(limits: dict) -> tuple[str, float]:
+    """Detect Anthropic tier from RPM limit. Returns (tier_name, monthly_budget)."""
+    try:
+        rpm_limit = int(limits.get("requests_limit", 0))
+    except (ValueError, TypeError):
+        return ("", 0)
+    best_name, best_budget = "", 0.0
+    for rpm, (name, budget) in TIER_BY_RPM.items():
+        if rpm_limit >= rpm:
+            best_name, best_budget = name, budget
+    return (best_name, best_budget)
+
+
+def _fmt_num(n: int | str) -> str:
+    try:
+        v = int(n)
+    except (ValueError, TypeError):
+        return str(n)
+    if v >= 1_000_000:
+        return f"{v / 1_000_000:.1f}M"
+    if v >= 1_000:
+        return f"{v / 1_000:.0f}K"
+    return str(v)
+
+
+def _fmt_money(amount: float) -> str:
+    try:
+        amount = float(amount)
+        if amount >= 1000:
+            return f"${amount / 1000:.1f}k".replace(".0k", "k")
+        if amount == int(amount):
+            return f"${int(amount)}"
+        return f"${amount:.2f}"
+    except (ValueError, TypeError):
+        return f"${amount}"
+
+
+def _fetch_oauth_usage(oauth_token: str) -> dict:
+    """Fetch usage data via the OAuth usage endpoint (same as Claude Code /usage).
+
+    Response structure:
+    {
+        "five_hour":  {"utilization": float, "resets_at": str},
+        "seven_day":  {"utilization": float, "resets_at": str},
+        "seven_day_sonnet": {"utilization": float, "resets_at": str} | null,
+        "extra_usage": {"is_enabled": bool, "monthly_limit": int,
+                        "used_credits": float, "utilization": float} | null,
+    }
+    """
+    req = urllib.request.Request(
+        f"{API_BASE}/api/oauth/usage",
+        headers={
+            "Authorization": f"Bearer {oauth_token}",
+            "anthropic-version": API_VERSION,
+            "anthropic-beta": "oauth-2025-04-20",
+            "content-type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read())
+
+
+def _fetch_oauth_usage_cached(oauth_token: str) -> dict:
+    """Fetch usage with file cache fallback for 429 rate limits."""
+    try:
+        data = _fetch_oauth_usage(oauth_token)
+        # Save to cache on success
+        try:
+            _CACHE_FILE.write_text(json.dumps(data))
+        except Exception:
+            pass
+        return data
+    except urllib.error.HTTPError as e:
+        if e.code == 429 and _CACHE_FILE.exists():
+            return json.loads(_CACHE_FILE.read_text())
+        raise
+
+
+def _parse_reset(iso_str: str) -> str:
+    """Parse ISO reset time to human-readable relative string."""
+    try:
+        clean = iso_str.replace("+00:00", "").replace("Z", "")
+        reset = datetime.fromisoformat(clean)
+        now = datetime.utcnow()
+        delta = reset - now
+        total_min = int(delta.total_seconds() / 60)
+        if total_min < 0:
+            return "now"
+        if total_min < 60:
+            return f"{total_min}m"
+        hours = total_min // 60
+        mins = total_min % 60
+        if hours < 24:
+            return f"{hours}h {mins}m"
+        days = hours // 24
+        return f"{days}d {hours % 24}h"
+    except Exception:
+        return iso_str
+
+
+def _auth_headers(key: str) -> dict[str, str]:
+    """Return appropriate auth headers for API key or OAuth token."""
+    if key.startswith("sk-ant-oat"):
+        return {"Authorization": f"Bearer {key}"}
+    return {"x-api-key": key}
+
+
+def _fetch_rate_limits(api_key: str) -> dict:
+    """Call count_tokens to read rate limit headers without consuming tokens."""
+    payload = json.dumps(
+        {
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "hi"}],
+        }
+    ).encode()
+
+    req = urllib.request.Request(
+        f"{API_BASE}/v1/messages/count_tokens",
+        data=payload,
+        headers={
+            **_auth_headers(api_key),
+            "anthropic-version": API_VERSION,
+            "content-type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        headers = resp.headers
+        limits = {}
+        for key in ("requests", "tokens", "input_tokens", "output_tokens"):
+            for suffix in ("limit", "remaining", "reset"):
+                h = f"anthropic-ratelimit-{key.replace('_', '-')}-{suffix}"
+                val = headers.get(h)
+                if val is not None:
+                    limits[f"{key}_{suffix}"] = val
+        return limits
+
+
+def _fetch_spend(admin_key: str) -> dict[str, float]:
+    """Fetch cost data for today, this week, this month."""
+    now = datetime.utcnow()
+    month_start = now.replace(day=1).strftime("%Y-%m-%d")
+    week_start = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+    today = now.strftime("%Y-%m-%d")
+    tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    costs = _get_cost_report(admin_key, month_start, tomorrow)
+
+    month_total = 0.0
+    week_total = 0.0
+    today_total = 0.0
+
+    for bucket in costs:
+        date_str = bucket.get("date", "")
+        amount = 0.0
+        for cost_item in bucket.get("costs", []):
+            try:
+                amount += float(cost_item.get("amount", 0))
+            except (ValueError, TypeError):
+                pass
+        dollars = amount / 100.0
+        month_total += dollars
+        if date_str >= week_start:
+            week_total += dollars
+        if date_str == today:
+            today_total += dollars
+
+    return {"today": today_total, "week": week_total, "month": month_total}
+
+
+def _get_cost_report(admin_key: str, start: str, end: str) -> list:
+    """Paginated fetch of cost report."""
+    all_data: list = []
+    next_page = None
+
+    while True:
+        url = (
+            f"{API_BASE}/v1/organizations/cost_report"
+            f"?start_date={start}&end_date={end}&bucket_size=1d"
+        )
+        if next_page:
+            url += f"&next_page={next_page}"
+
+        req = urllib.request.Request(
+            url,
+            headers={
+                "x-api-key": admin_key,
+                "anthropic-version": API_VERSION,
+            },
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+            all_data.extend(data.get("data", []))
+            if data.get("has_more"):
+                next_page = data.get("next_page")
+            else:
+                break
+
+    return all_data
