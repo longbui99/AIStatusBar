@@ -8,11 +8,19 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
+
+logging.basicConfig(
+    filename=SCRIPT_DIR / "ai-status.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 from providers import ProviderStatus, load_providers
 from providers.rendering import (
@@ -125,6 +133,7 @@ def render(statuses: list[ProviderStatus]) -> None:
 
 
 def main() -> None:
+    logger.info("AI Status Bar refresh started")
     try:
         config = load_config()
         configure_bar(config)
@@ -134,9 +143,12 @@ def main() -> None:
         for key, mod in sorted(providers.items()):
             provider_config = config.get(key, {})
             try:
+                logger.info(f"Fetching status for provider: {key}")
                 status = mod.fetch_status(provider_config, global_config=config)
+                logger.info(f"Fetched data for {key}: {status}")
                 statuses.append(status)
             except Exception as e:
+                logger.error(f"Error fetching status for {key}: {e}", exc_info=True)
                 statuses.append(ProviderStatus(
                     name=getattr(mod, "DISPLAY_NAME", key),
                     short_name=getattr(mod, "DISPLAY_NAME", key),
@@ -145,7 +157,9 @@ def main() -> None:
                 ))
 
         render(statuses)
+        logger.info("AI Status Bar refresh finished successfully")
     except Exception as e:
+        logger.exception(f"Error during refresh: {e}")
         print(f"err | sfimage=exclamationmark.triangle color=#FF3B30 size=13")
         print("---")
         print(f"Error: {e}")
