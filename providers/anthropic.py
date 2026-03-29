@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 from pathlib import Path
 
 from providers import MetricData, ProviderStatus, SpendData
@@ -439,9 +442,11 @@ def _fetch_oauth_usage_cached(oauth_token: str) -> dict:
             _CACHE_FILE.write_text(json.dumps(data))
         except Exception:
             pass
+        logger.info("Successfully fetched data directly from active Anthropic API (online)")
         return data
     except urllib.error.HTTPError as e:
         if e.code == 429 and _CACHE_FILE.exists():
+            logger.warning("Hit 429 Rate Limit from Anthropic API. Falling back to using cached data")
             return json.loads(_CACHE_FILE.read_text())
         raise
 
