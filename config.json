@@ -1,4 +1,5 @@
 {
+  "working_hours_per_day": 24,
   "thresholds": {
     "yellow": 80,
     "orange": 90,

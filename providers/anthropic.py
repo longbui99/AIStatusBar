@@ -207,10 +207,11 @@ TIER_TO_SUB: dict[str, str] = {
 
 # Default thresholds — overridden by config.json
 _THRESHOLDS = {"yellow": 60, "orange": 80, "red": 100}
+_WORKING_HOURS: float = 0  # 0 = not configured, use full 24h
 
 
 def _set_thresholds(cfg: dict) -> None:
-    global _THRESHOLDS
+    global _THRESHOLDS, _WORKING_HOURS
     t = cfg.get("thresholds", {})
     if t:
         _THRESHOLDS = {
@@ -218,6 +219,7 @@ def _set_thresholds(cfg: dict) -> None:
             "orange": t.get("orange", 80),
             "red": t.get("red", 100),
         }
+    _WORKING_HOURS = cfg.get("working_hours_per_day", 0)
 
 
 def _pct_color(pct: float) -> str:
@@ -231,8 +233,25 @@ def _pct_color(pct: float) -> str:
     return "green"
 
 
+def _estimate_active_hours(wall_hours: float, working_hours_per_day: float) -> float:
+    """Estimate active hours within a wall-clock duration.
+
+    For unconfigured or 24h work days, returns wall_hours unchanged.
+    For shorter work days, caps each 24h period at working_hours_per_day.
+    """
+    if working_hours_per_day <= 0 or working_hours_per_day >= 24:
+        return wall_hours
+    full_days = wall_hours / 24
+    return full_days * working_hours_per_day
+
+
 def _forecast_color(utilization: float, resets_at: str, window_hours: float) -> str:
-    """Forecast color based on linear projection to end of window."""
+    """Forecast color based on linear projection to end of window.
+
+    When working_hours_per_day is configured, the projection uses active hours:
+    rate = utilization / elapsed_active_hours
+    projected = utilization + rate × remaining_active_hours
+    """
     try:
         clean = resets_at.replace("+00:00", "").replace("Z", "")
         reset_dt = datetime.fromisoformat(clean)
@@ -244,7 +263,16 @@ def _forecast_color(utilization: float, resets_at: str, window_hours: float) -> 
         if elapsed_secs <= 0:
             return "green"
 
-        projected = utilization * (total_secs / elapsed_secs)
+        elapsed_h = elapsed_secs / 3600
+        remaining_h = remaining_secs / 3600
+        active_elapsed = _estimate_active_hours(elapsed_h, _WORKING_HOURS)
+        active_remaining = _estimate_active_hours(remaining_h, _WORKING_HOURS)
+
+        if active_elapsed <= 0:
+            return "green"
+
+        rate = utilization / active_elapsed
+        projected = utilization + rate * active_remaining
 
         if projected >= _THRESHOLDS["red"]:
             return "red"
@@ -271,7 +299,7 @@ def _worst(a: str, b: str) -> str:
 
 
 def _forecast_pct(utilization: float, resets_at: str, window_hours: float) -> float:
-    """Return projected utilization at end of window."""
+    """Return projected utilization at end of window using active-hours model."""
     try:
         clean = resets_at.replace("+00:00", "").replace("Z", "")
         reset_dt = datetime.fromisoformat(clean)
@@ -281,7 +309,17 @@ def _forecast_pct(utilization: float, resets_at: str, window_hours: float) -> fl
         elapsed_secs = total_secs - remaining_secs
         if elapsed_secs <= 0:
             return utilization
-        return utilization * (total_secs / elapsed_secs)
+
+        elapsed_h = elapsed_secs / 3600
+        remaining_h = remaining_secs / 3600
+        active_elapsed = _estimate_active_hours(elapsed_h, _WORKING_HOURS)
+        active_remaining = _estimate_active_hours(remaining_h, _WORKING_HOURS)
+
+        if active_elapsed <= 0:
+            return utilization
+
+        rate = utilization / active_elapsed
+        return utilization + rate * active_remaining
     except Exception:
         return utilization
 
@@ -417,8 +455,11 @@ def fetch_status(config: dict, global_config: dict | None = None) -> ProviderSta
                 now = datetime.utcnow()
                 day_of_month = now.day
                 days_in_month = 30
-                if day_of_month > 0:
-                    projected_pct = epct * (days_in_month / day_of_month)
+                elapsed_active = _estimate_active_hours(day_of_month * 24, _WORKING_HOURS)
+                remaining_active = _estimate_active_hours((days_in_month - day_of_month) * 24, _WORKING_HOURS)
+                if elapsed_active > 0:
+                    rate = epct / elapsed_active
+                    projected_pct = epct + rate * remaining_active
                 else:
                     projected_pct = epct
                 fc_e = _pct_color(projected_pct)

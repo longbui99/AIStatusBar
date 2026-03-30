@@ -31,10 +31,19 @@ CURSOR_STATE_DB = (
 
 # Default thresholds — overridden by config.json
 _THRESHOLDS = {"yellow": 60, "orange": 80, "red": 100}
+_WORKING_HOURS: float = 0
+
+
+def _estimate_active_hours(wall_hours: float, working_hours_per_day: float) -> float:
+    """Estimate active hours within a wall-clock duration."""
+    if working_hours_per_day <= 0 or working_hours_per_day >= 24:
+        return wall_hours
+    full_days = wall_hours / 24
+    return full_days * working_hours_per_day
 
 
 def _set_thresholds(cfg: dict) -> None:
-    global _THRESHOLDS
+    global _THRESHOLDS, _WORKING_HOURS
     t = cfg.get("thresholds", {})
     if t:
         _THRESHOLDS = {
@@ -42,6 +51,7 @@ def _set_thresholds(cfg: dict) -> None:
             "orange": t.get("orange", 80),
             "red": t.get("red", 100),
         }
+    _WORKING_HOURS = cfg.get("working_hours_per_day", 0)
 
 
 def _pct_color(pct: float) -> str:
@@ -213,7 +223,13 @@ def fetch_status(config: dict, global_config: dict | None = None) -> ProviderSta
                 days_elapsed = max((now - period_start).days, 1)
             except Exception:
                 days_elapsed = now.day
-            projected = pct * (30 / days_elapsed) if days_elapsed > 0 else pct
+            elapsed_active = _estimate_active_hours(days_elapsed * 24, _WORKING_HOURS)
+            remaining_active = _estimate_active_hours((30 - days_elapsed) * 24, _WORKING_HOURS)
+            if elapsed_active > 0:
+                rate = pct / elapsed_active
+                projected = pct + rate * remaining_active
+            else:
+                projected = pct
             fc_color = _pct_color(projected)
             worst_color = _worst(worst_color, fc_color)
 

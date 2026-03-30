@@ -35,10 +35,19 @@ STATE_DB = (
 
 # Default thresholds — overridden by config.json
 _THRESHOLDS = {"yellow": 60, "orange": 80, "red": 100}
+_WORKING_HOURS: float = 0
+
+
+def _estimate_active_hours(wall_hours: float, working_hours_per_day: float) -> float:
+    """Estimate active hours within a wall-clock duration."""
+    if working_hours_per_day <= 0 or working_hours_per_day >= 24:
+        return wall_hours
+    full_days = wall_hours / 24
+    return full_days * working_hours_per_day
 
 
 def _set_thresholds(cfg: dict) -> None:
-    global _THRESHOLDS
+    global _THRESHOLDS, _WORKING_HOURS
     t = cfg.get("thresholds", {})
     if t:
         _THRESHOLDS = {
@@ -46,6 +55,7 @@ def _set_thresholds(cfg: dict) -> None:
             "orange": t.get("orange", 80),
             "red": t.get("red", 100),
         }
+    _WORKING_HOURS = cfg.get("working_hours_per_day", 0)
 
 
 def _pct_color(pct: float) -> str:
@@ -300,7 +310,15 @@ def _forecast_pct(pct_used: float, resets_at: str) -> float:
         elapsed_secs = total_secs - remaining_secs
         if elapsed_secs <= 0:
             return pct_used
-        return pct_used * (total_secs / elapsed_secs)
+
+        elapsed_h = elapsed_secs / 3600
+        remaining_h = remaining_secs / 3600
+        active_elapsed = _estimate_active_hours(elapsed_h, _WORKING_HOURS)
+        active_remaining = _estimate_active_hours(remaining_h, _WORKING_HOURS)
+        if active_elapsed <= 0:
+            return pct_used
+        rate = pct_used / active_elapsed
+        return pct_used + rate * active_remaining
     except Exception:
         return pct_used
 
