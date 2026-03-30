@@ -2,7 +2,7 @@
   "thresholds": {
     "yellow": 80,
     "orange": 90,
-    "red": 200
+    "red": 100
   },
   "progress_bar": {
     "filled": "█",
