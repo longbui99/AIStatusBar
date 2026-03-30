@@ -152,8 +152,10 @@ def _read_keychain_creds() -> dict:
     scopes = oauth.get("scopes", [])
     logger.info("OAuth credentials: %s", oauth)
 
-    # Always refresh to get a fresh token (rate limits are per-token)
-    if refresh_token:
+    # Only refresh when the token is expired or expiring within 5 minutes
+    now_ms = int(datetime.utcnow().timestamp() * 1000)
+    token_expiring = expires_at and (expires_at - now_ms) < 5 * 60 * 1000
+    if refresh_token and token_expiring:
         logger.info("OAuth token expired or expiring soon, refreshing...")
         try:
             token_resp = _refresh_oauth_token(refresh_token, scopes)
