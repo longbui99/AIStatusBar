@@ -10,13 +10,24 @@ COLORS = {
     "green": "#34C759",
     "yellow": "#FFD60A",
     "orange": "#FF9500",
-    "red": "#FF3B30",
+    "red": "#E5484D",
     "blue": "#007AFF",
     "gray": "#8E8E93",
     "dim": "#636366",
     "label": "#AEAEB2",
     "white": "#F5F5F7",
 }
+
+# Per-provider brand colors for quick identification
+PROVIDER_COLORS: dict[str, str] = {
+    "CLD": "#D97706",   # Anthropic — warm amber
+    "CUR": "#A855F7",   # Cursor — purple
+}
+
+
+def _provider_color(short_name: str) -> str:
+    """Return brand color for a provider, falling back to blue."""
+    return PROVIDER_COLORS.get(short_name, COLORS["blue"])
 
 # ── SF Symbol helpers ────────────────────────────────────────────────────────
 
@@ -91,47 +102,54 @@ def _mini_bar(pct: float, width: int | None = None) -> str:
 # ── Menu bar title builders ──────────────────────────────────────────────────
 
 def render_title_cycling(statuses: list) -> list[str]:
-    """Generate a single compact title line with all key metrics.
+    """Generate a single title line combining all providers with metrics.
+
+    Only providers with actual metric data appear in the menu bar title.
+    Providers without metrics (e.g. unconfigured Cursor) are dropdown-only.
+    This avoids SwiftBar cycling between a detailed line and an empty one.
 
     Format: 5h ▁▂ 7%  7d █▅ 56%  $2.1k/$5k
     """
     if not statuses:
         return ["AI | sfimage=gear color=#FF9500 size=13"]
 
-    lines = []
-    for s in statuses:
-        worst = s.color or "green"
-        hex_c = _color_hex(worst)
-        symbol = _status_symbol(worst)
-        sf_cfg = _sfconfig([hex_c], weight="semibold")
+    # Collect parts from all providers that have metrics
+    all_parts: list[str] = []
+    worst_overall = "green"
 
+    for s in statuses:
         if not hasattr(s, "metrics") or not s.metrics:
-            lines.append(
-                f" {s.summary} | sfimage={symbol} sfconfig={sf_cfg} sfsize=14 "
-                f"size=12 font=SF-Mono-Medium"
-            )
             continue
 
-        # Single line with non-detail-only metrics, using · as separator
-        parts = []
+        worst = s.color or "green"
+        rank = {"green": 0, "white": 0, "yellow": 1, "orange": 2, "red": 3}
+        worst_overall = worst if rank.get(worst, 0) > rank.get(worst_overall, 0) else worst_overall
+
         for m in s.metrics:
             if getattr(m, "detail_only", False):
                 continue
             if m.short_label == "$":
-                parts.append(f"{m.extra or f'${m.pct:.0f}%'}")
+                all_parts.append(f"{m.extra or f'${m.pct:.0f}%'}")
+            elif m.pct < 0:
+                # Unlimited — no bar, just show symbol
+                all_parts.append(f"{m.short_label}")
             else:
                 bar = _mini_bar(m.pct)
-                parts.append(f"{m.short_label} {bar} {m.pct:.0f}%")
+                all_parts.append(f"{m.short_label} {bar} {m.pct:.0f}%")
 
-        # Anthropic "A" logo as 16x16 template image
-        logo = "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAALklEQVR4nGP4z4AfEpDGVAAClCiAAZopgEmhKKGmAnRAngIsbFwhCOcTrQAnBAD5KzbYyX/0zQAAAABJRU5ErkJggg=="
-        lines.append(
-            f" {' · '.join(parts)} "
-            f"| templateImage={logo} "
-            f"size=11 font=SF-Mono-Medium color={hex_c}"
-        )
+    if not all_parts:
+        # No provider has metrics — show a simple fallback (no cycling)
+        hex_c = _color_hex("green")
+        return [f" OK | sfimage=sparkles sfsize=14 size=12 font=SF-Mono-Medium color={hex_c}"]
 
-    return lines
+    hex_c = _color_hex(worst_overall)
+    # Anthropic "A" logo as 16x16 template image
+    logo = "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAALklEQVR4nGP4z4AfEpDGVAAClCiAAZopgEmhKKGmAnRAngIsbFwhCOcTrQAnBAD5KzbYyX/0zQAAAABJRU5ErkJggg=="
+    return [
+        f" {' · '.join(all_parts)} "
+        f"| templateImage={logo} "
+        f"size=11 font=SF-Mono-Medium color={hex_c}"
+    ]
 
 
 # ── Dropdown section builders ────────────────────────────────────────────────
@@ -189,9 +207,11 @@ def render_metric_section(m: Metric) -> list[str]:
     hex_c = _color_hex(m.color)
 
     if m.color == "red":
-        header_icon = "exclamationmark.circle.fill"
+        header_icon = "exclamationmark.triangle.fill"
     elif m.color == "orange":
         header_icon = "chart.line.uptrend.xyaxis"
+    elif m.color == "yellow":
+        header_icon = "exclamationmark.circle.fill"
     else:
         header_icon = "checkmark.circle.fill"
 
@@ -201,21 +221,30 @@ def render_metric_section(m: Metric) -> list[str]:
         f"sfconfig={header_cfg} sfsize=14 size=13 font=SF-Pro-Text-Semibold"
     )
 
-    bar = _smooth_bar(m.pct)
-    lines.append(
-        f"  {bar}  {m.pct:5.1f}% | font=SF-Mono-Regular size=12 color={hex_c} trim=false"
-    )
+    if m.pct < 0:
+        # Unlimited — full light gray bar
+        bar = "░" * 20
+        lines.append(
+            f"  {bar}    ∞ | font=SF-Mono-Regular size=12 color={COLORS['label']} trim=false"
+        )
+    else:
+        # Normal metric with progress bar and forecast
+        bar = _smooth_bar(m.pct)
+        lines.append(
+            f"  {bar}  {m.pct:5.1f}% | font=SF-Mono-Regular size=12 color={hex_c} trim=false"
+        )
 
-    arrow = _forecast_arrow(m.forecast_pct)
-    lines.append(
-        f"  {arrow} Forecast {m.forecast_pct:.0f}% at reset | "
-        f"font=SF-Pro-Text-Regular size=11 color={hex_c}"
-    )
+        arrow = _forecast_arrow(m.forecast_pct)
+        lines.append(
+            f"  {arrow} Forecast {m.forecast_pct:.0f}% at reset | "
+            f"font=SF-Pro-Text-Regular size=11 color={hex_c}"
+        )
 
-    lines.append(
-        f"  Resets in {m.reset_label} | "
-        f"sfimage=clock size=11 color={COLORS['dim']}"
-    )
+    if m.reset_label:
+        lines.append(
+            f"  Resets {m.reset_label} | "
+            f"sfimage=clock size=11 color={COLORS['dim']}"
+        )
 
     if m.extra:
         lines.append(f"  {m.extra} | size=11 color={COLORS['label']}")

@@ -27,6 +27,8 @@ from providers.rendering import (
     COLORS,
     Metric,
     SpendRow,
+    _provider_color,
+    _sfconfig,
     configure_bar,
     render_footer,
     render_metric_section,
@@ -78,13 +80,29 @@ def render(statuses: list[ProviderStatus]) -> None:
     print("---")
 
     # ── Dropdown body ────────────────────────────────────────────────────
-    for s in statuses:
-        # Provider header
-        print(f"{s.name} | size=15 font=SF-Pro-Display-Bold sfimage=sparkles sfcolor={COLORS['blue']}")
-        print("---")
+    light_sep = f"  {'─' * 30} | size=5 color={COLORS['dim']}"
 
-        # Metrics sections
+    for idx, s in enumerate(statuses):
+        # Provider header with plan on same line
+        pcolor = _provider_color(s.short_name)
+        pcfg = _sfconfig([pcolor], weight="semibold")
+        if s.plan_label:
+            badge_cfg = _sfconfig([COLORS['blue']], weight="medium")
+            # Use person badge icon, provider name + plan on one line
+            print(
+                f"{s.name}  ·  {s.plan_label} | size=13 font=SF-Pro-Text-Semibold "
+                f"sfimage=person.crop.circle.badge.checkmark sfconfig={badge_cfg} color={COLORS['blue']}"
+            )
+        else:
+            print(
+                f"{s.name} | size=13 font=SF-Pro-Text-Semibold "
+                f"sfimage=sparkles sfconfig={pcfg} color={COLORS['blue']}"
+            )
+
+        # Metrics sections with light separators between them
         for i, md in enumerate(s.metrics):
+            if i > 0:
+                print(light_sep)
             m = Metric(
                 label=md.label,
                 pct=md.pct,
@@ -95,12 +113,10 @@ def render(statuses: list[ProviderStatus]) -> None:
             )
             for line in render_metric_section(m):
                 print(line)
-            if i < len(s.metrics) - 1:
-                print(render_separator())
 
         # Spend section
         if s.spend_rows:
-            print(render_separator())
+            print(light_sep)
             rows = [SpendRow(label=sr.label, amount=sr.amount) for sr in s.spend_rows]
             for line in render_spend_section(
                 "Spend", rows,
@@ -112,20 +128,17 @@ def render(statuses: list[ProviderStatus]) -> None:
 
         # Rate limits
         if s.rate_limits:
-            print(render_separator())
+            print(light_sep)
             for line in render_rate_limit_section(s.rate_limits):
-                print(line)
-
-        # Plan badge
-        if s.plan_label:
-            print(render_separator())
-            for line in render_plan_badge(s.plan_label):
                 print(line)
 
         # Error
         if s.error:
-            print(render_separator())
-            print(f"  {s.error} | sfimage=exclamationmark.triangle color=#FF3B30 size=11")
+            print(f"  {s.error} | sfimage=exclamationmark.triangle color=#E5484D size=11")
+
+        # Heavy separator between providers (not after last one)
+        if idx < len(statuses) - 1:
+            print("---")
 
     # Footer
     for line in render_footer(str(SCRIPT_DIR), show_login=needs_login):
@@ -142,6 +155,9 @@ def main() -> None:
         statuses: list[ProviderStatus] = []
         for key, mod in sorted(providers.items()):
             provider_config = config.get(key, {})
+            if not provider_config.get("enabled", True):
+                logger.info(f"Skipping disabled provider: {key}")
+                continue
             try:
                 logger.info(f"Fetching status for provider: {key}")
                 status = mod.fetch_status(provider_config, global_config=config)
@@ -160,7 +176,7 @@ def main() -> None:
         logger.info("AI Status Bar refresh finished successfully")
     except Exception as e:
         logger.exception(f"Error during refresh: {e}")
-        print(f"err | sfimage=exclamationmark.triangle color=#FF3B30 size=13")
+        print(f"err | sfimage=exclamationmark.triangle color=#E5484D size=13")
         print("---")
         print(f"Error: {e}")
 

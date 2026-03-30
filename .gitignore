@@ -303,4 +303,4 @@ local/
 .local
 .cursor/
 storage/
-.usage_cache.json
+.usage_cache.json__pycache__/

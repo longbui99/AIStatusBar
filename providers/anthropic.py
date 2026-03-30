@@ -7,18 +7,20 @@ import logging
 import subprocess
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta
-
-logger = logging.getLogger(__name__)
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from providers import MetricData, ProviderStatus, SpendData
+
+logger = logging.getLogger(__name__)
 
 PROVIDER_KEY = "anthropic"
 DISPLAY_NAME = "CLD"
 
 API_BASE = "https://api.anthropic.com"
 API_VERSION = "2023-06-01"
+OAUTH_TOKEN_URL = "https://platform.claude.com/v1/oauth/token"
+OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 KEYCHAIN_SERVICE = "Claude Code-credentials"
 _CACHE_FILE = Path(__file__).resolve().parent.parent / ".usage_cache.json"
 
@@ -35,11 +37,8 @@ TIER_BY_RPM: dict[int, tuple[str, float]] = {
 }
 
 
-def _read_keychain_creds() -> dict:
-    """Read Claude Code credentials from macOS Keychain.
-
-    Returns dict with keys: access_token, subscription_type, rate_limit_tier, expires_at.
-    """
+def _read_keychain_raw() -> dict:
+    """Read raw Claude Code credentials JSON from macOS Keychain."""
     try:
         result = subprocess.run(
             ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
@@ -49,17 +48,139 @@ def _read_keychain_creds() -> dict:
         )
         if result.returncode != 0:
             return {}
-        creds = json.loads(result.stdout.strip())
-        oauth = creds.get("claudeAiOauth", {})
-        return {
-            "access_token": oauth.get("accessToken", ""),
-            "subscription_type": oauth.get("subscriptionType", ""),
-            "rate_limit_tier": oauth.get("rateLimitTier", ""),
-            "expires_at": oauth.get("expiresAt", 0),
-            "scopes": oauth.get("scopes", []),
-        }
+        return json.loads(result.stdout.strip())
     except Exception:
         return {}
+
+
+def _get_keychain_account() -> str:
+    """Read the account name from the existing keychain entry."""
+    try:
+        result = subprocess.run(
+            ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        for line in result.stdout.splitlines():
+            if '"acct"' in line and "<blob>=" in line:
+                # Parse: "acct"<blob>="longglacis"
+                return line.split('="', 1)[1].rstrip('"')
+    except Exception:
+        pass
+    return ""
+
+
+def _write_keychain_raw(creds: dict) -> None:
+    """Write updated credentials back to macOS Keychain.
+
+    Preserves the original account name so Claude Code extension can still find it.
+    """
+    try:
+        account = _get_keychain_account() or "Claude Code"
+        creds_json = json.dumps(creds)
+        # Delete then re-add (security CLI doesn't support in-place update)
+        subprocess.run(
+            ["security", "delete-generic-password", "-s", KEYCHAIN_SERVICE],
+            capture_output=True,
+            timeout=5,
+        )
+        subprocess.run(
+            [
+                "security",
+                "add-generic-password",
+                "-s",
+                KEYCHAIN_SERVICE,
+                "-a",
+                account,
+                "-w",
+                creds_json,
+            ],
+            capture_output=True,
+            timeout=5,
+            check=True,
+        )
+        logger.info(
+            "Updated keychain credentials after token refresh (account=%s)", account
+        )
+    except Exception as e:
+        logger.error(f"Failed to write keychain: {e}")
+
+
+def _refresh_oauth_token(refresh_token: str, scopes: list[str]) -> dict:
+    """Refresh the OAuth access token using the refresh token.
+
+    Returns the full token response: {access_token, refresh_token, expires_in, ...}
+    """
+    payload = json.dumps(
+        {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": OAUTH_CLIENT_ID,
+            "scope": " ".join(scopes) if scopes else "",
+        }
+    ).encode()
+
+    req = urllib.request.Request(
+        OAUTH_TOKEN_URL,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "claude-code/1.0",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read())
+
+
+def _read_keychain_creds() -> dict:
+    """Read Claude Code credentials from macOS Keychain.
+
+    Auto-refreshes the OAuth token if expired, updating the keychain so that
+    Claude Code extension and other consumers also get the fresh token.
+
+    Returns dict with keys: access_token, subscription_type, rate_limit_tier, expires_at.
+    """
+    raw = _read_keychain_raw()
+    if not raw:
+        return {}
+
+    oauth = raw.get("claudeAiOauth", {})
+    access_token = oauth.get("accessToken", "")
+    refresh_token = oauth.get("refreshToken", "")
+    expires_at = oauth.get("expiresAt", 0)
+    scopes = oauth.get("scopes", [])
+    logger.info("OAuth credentials: %s", oauth)
+
+    # Always refresh to get a fresh token (rate limits are per-token)
+    if refresh_token:
+        logger.info("OAuth token expired or expiring soon, refreshing...")
+        try:
+            token_resp = _refresh_oauth_token(refresh_token, scopes)
+            new_access = token_resp.get("access_token", "")
+            new_refresh = token_resp.get("refresh_token", refresh_token)
+            expires_in = token_resp.get("expires_in", 3600)
+            new_expires_at = int((datetime.utcnow().timestamp() + expires_in) * 1000)
+
+            if new_access:
+                access_token = new_access
+                oauth["accessToken"] = new_access
+                oauth["refreshToken"] = new_refresh
+                oauth["expiresAt"] = new_expires_at
+                raw["claudeAiOauth"] = oauth
+                _write_keychain_raw(raw)
+                expires_at = new_expires_at
+                logger.info("OAuth token refreshed successfully")
+        except Exception as e:
+            logger.error(f"Failed to refresh OAuth token: {e}")
+
+    return {
+        "access_token": access_token,
+        "subscription_type": oauth.get("subscriptionType", ""),
+        "rate_limit_tier": oauth.get("rateLimitTier", ""),
+        "expires_at": expires_at,
+        "scopes": scopes,
+    }
 
 
 # Known subscription plans: key -> (label, monthly_price)
@@ -442,33 +563,72 @@ def _fetch_oauth_usage_cached(oauth_token: str) -> dict:
             _CACHE_FILE.write_text(json.dumps(data))
         except Exception:
             pass
-        logger.info("Successfully fetched data directly from active Anthropic API (online)")
+        logger.info(
+            "Successfully fetched data directly from active Anthropic API (online)"
+        )
         return data
     except urllib.error.HTTPError as e:
         if e.code == 429 and _CACHE_FILE.exists():
-            logger.warning("Hit 429 Rate Limit from Anthropic API. Falling back to using cached data")
+            logger.warning(
+                "Hit 429 Rate Limit from Anthropic API. Falling back to using cached data"
+            )
             return json.loads(_CACHE_FILE.read_text())
         raise
 
 
 def _parse_reset(iso_str: str) -> str:
-    """Parse ISO reset time to human-readable relative string."""
+    """Parse ISO reset time to a string matching Claude terminal style.
+
+    Returns e.g. "2h 14m — Apr 1 at 5:00 PM (Asia/Saigon)"
+    """
     try:
         clean = iso_str.replace("+00:00", "").replace("Z", "")
-        reset = datetime.fromisoformat(clean)
+        reset_utc = datetime.fromisoformat(clean)
         now = datetime.utcnow()
-        delta = reset - now
+        delta = reset_utc - now
         total_min = int(delta.total_seconds() / 60)
+
+        # Convert to local timezone
+        reset_aware = reset_utc.replace(tzinfo=UTC)
+        reset_local = reset_aware.astimezone()
+        # Get short timezone name — prefer city part of IANA name (e.g. "Saigon")
+        tz_name = reset_local.strftime("%Z")  # fallback e.g. "+07"
+        try:
+            link = subprocess.run(
+                ["readlink", "/etc/localtime"], capture_output=True, text=True, timeout=2
+            ).stdout.strip()
+            if "zoneinfo/" in link:
+                iana = link.split("zoneinfo/", 1)[1]
+                # Use just the city part: "Asia/Ho_Chi_Minh" -> "Ho_Chi_Minh"
+                tz_name = iana.split("/")[-1].replace("_", " ")
+        except Exception:
+            pass
+
         if total_min < 0:
             return "now"
+
+        # Relative part
         if total_min < 60:
-            return f"{total_min}m"
-        hours = total_min // 60
-        mins = total_min % 60
-        if hours < 24:
-            return f"{hours}h {mins}m"
-        days = hours // 24
-        return f"{days}d {hours % 24}h"
+            relative = f"{total_min}m"
+        elif total_min < 24 * 60:
+            hours = total_min // 60
+            mins = total_min % 60
+            relative = f"{hours}h {mins}m"
+        else:
+            hours = total_min // 60
+            days = hours // 24
+            relative = f"{days}d {hours % 24}h"
+
+        # Absolute part — match Claude terminal style
+        now_local = datetime.now().astimezone()
+        if reset_local.date() == now_local.date():
+            abs_time = reset_local.strftime("%-I:%M %p")
+        else:
+            abs_time = (
+                f"{reset_local.strftime('%b %-d')} at {reset_local.strftime('%-I:%M %p')}"
+            )
+
+        return f"{relative} — {abs_time} ({tz_name})"
     except Exception:
         return iso_str
 

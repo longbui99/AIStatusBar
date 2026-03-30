@@ -22,12 +22,31 @@ if [ -z "$SWIFTBAR_APP" ]; then
 fi
 echo "Found SwiftBar at: $SWIFTBAR_APP"
 
-# 3. Use our project folder as the SwiftBar plugin directory directly
-#    Rename non-plugin files so SwiftBar ignores them (it only runs *.{sh,py,rb,etc} with intervals)
-defaults write com.ameba.SwiftBar PluginDirectory "$SCRIPT_DIR"
-echo "Set SwiftBar plugin directory to: $SCRIPT_DIR"
+# 2. Set up clean plugin directory with symlink
+#    SwiftBar executes ALL files in its plugin dir, so we point it to a
+#    dedicated folder containing only a symlink to our actual plugin script.
+mkdir -p "$PLUGIN_DIR"
 
-# 5. Launch SwiftBar
+# Auto-detect the plugin file (matches ai-status.*.py pattern)
+PLUGIN_FILE="$(ls "$SCRIPT_DIR"/ai-status.*.py 2>/dev/null | head -1)"
+if [ -z "$PLUGIN_FILE" ]; then
+    echo "Error: No ai-status.*.py plugin found in $SCRIPT_DIR"
+    exit 1
+fi
+PLUGIN_NAME="$(basename "$PLUGIN_FILE")"
+
+# Remove old symlinks
+rm -f "$PLUGIN_DIR"/ai-status.*.py 2>/dev/null || true
+
+# Create symlink to the actual plugin
+ln -s "$PLUGIN_FILE" "$PLUGIN_DIR/$PLUGIN_NAME"
+echo "Symlinked plugin to: $PLUGIN_DIR/$PLUGIN_NAME"
+
+# 3. Point SwiftBar to the clean plugin directory (NOT the source dir)
+defaults write com.ameba.SwiftBar PluginDirectory "$PLUGIN_DIR"
+echo "Set SwiftBar plugin directory to: $PLUGIN_DIR"
+
+# 4. Launch SwiftBar
 killall SwiftBar 2>/dev/null || true
 sleep 1
 echo "Launching SwiftBar..."
