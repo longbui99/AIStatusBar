@@ -591,7 +591,7 @@ def _parse_reset(iso_str: str) -> str:
         total_min = int(delta.total_seconds() / 60)
 
         # Convert to local timezone
-        reset_aware = reset_utc.replace(tzinfo=UTC)
+        reset_aware = reset_utc.replace(tzinfo=timezone.utc)
         reset_local = reset_aware.astimezone()
         # Get short timezone name — prefer city part of IANA name (e.g. "Saigon")
         tz_name = reset_local.strftime("%Z")  # fallback e.g. "+07"
