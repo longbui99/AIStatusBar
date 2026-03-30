@@ -556,8 +556,37 @@ def _fetch_oauth_usage(oauth_token: str) -> dict:
         return json.loads(resp.read())
 
 
+def _force_refresh_token() -> str:
+    """Force-refresh the OAuth token regardless of expiry. Returns new access token or empty string."""
+    raw = _read_keychain_raw()
+    if not raw:
+        return ""
+    oauth = raw.get("claudeAiOauth", {})
+    refresh_token = oauth.get("refreshToken", "")
+    scopes = oauth.get("scopes", [])
+    if not refresh_token:
+        return ""
+    try:
+        token_resp = _refresh_oauth_token(refresh_token, scopes)
+        new_access = token_resp.get("access_token", "")
+        new_refresh = token_resp.get("refresh_token", refresh_token)
+        expires_in = token_resp.get("expires_in", 3600)
+        new_expires_at = int((datetime.utcnow().timestamp() + expires_in) * 1000)
+        if new_access:
+            oauth["accessToken"] = new_access
+            oauth["refreshToken"] = new_refresh
+            oauth["expiresAt"] = new_expires_at
+            raw["claudeAiOauth"] = oauth
+            _write_keychain_raw(raw)
+            logger.info("Force-refreshed OAuth token after 429")
+            return new_access
+    except Exception as e:
+        logger.error(f"Failed to force-refresh OAuth token: {e}")
+    return ""
+
+
 def _fetch_oauth_usage_cached(oauth_token: str) -> dict:
-    """Fetch usage with file cache fallback for 429 rate limits."""
+    """Fetch usage with token refresh retry and file cache fallback for 429 rate limits."""
     try:
         data = _fetch_oauth_usage(oauth_token)
         # Save to cache on success
@@ -570,11 +599,27 @@ def _fetch_oauth_usage_cached(oauth_token: str) -> dict:
         )
         return data
     except urllib.error.HTTPError as e:
-        if e.code == 429 and _CACHE_FILE.exists():
-            logger.warning(
-                "Hit 429 Rate Limit from Anthropic API. Falling back to using cached data"
-            )
-            return json.loads(_CACHE_FILE.read_text())
+        if 400 <= e.code < 500:
+            # Try refreshing the token and retrying once for any 4xx error
+            logger.warning(f"Hit {e.code} from Anthropic API. Attempting token refresh and retry...")
+            new_token = _force_refresh_token()
+            if new_token and new_token != oauth_token:
+                try:
+                    data = _fetch_oauth_usage(new_token)
+                    try:
+                        _CACHE_FILE.write_text(json.dumps(data))
+                    except Exception:
+                        pass
+                    logger.info("Retry with refreshed token succeeded")
+                    return data
+                except Exception as retry_err:
+                    logger.warning(f"Retry after token refresh also failed: {retry_err}")
+            # Fall back to cache
+            if _CACHE_FILE.exists():
+                logger.warning(
+                    f"Falling back to cached data after {e.code}"
+                )
+                return json.loads(_CACHE_FILE.read_text())
         raise
 
 
