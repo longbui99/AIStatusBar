@@ -22,6 +22,17 @@ COLORS = {
 PROVIDER_COLORS: dict[str, str] = {
     "CLD": "#D97706",   # Anthropic — warm amber
     "CUR": "#A855F7",   # Cursor — purple
+    "AG": "#10B981",    # Antigravity — teal
+}
+
+# Per-provider 16x16 template images (base64-encoded PNG)
+PROVIDER_LOGOS: dict[str, str] = {
+    # Claude sunburst/asterisk logo
+    "CLD": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABk0lEQVR4nH2Sv0uVcRTGP9+rhlxNInUwwyJpqnBoaW68gxBuVv9EkDhZNAVlQUMQBRLkkBgRNWRLSzq1RRA0RGvgYOAPkPzEwfPK5XLvPfDyfs97nud8z3ueB7qEOqSe7IY5CrWoNbWhjmS+pH7O83DWAlNoF2rdw3iR+Yr6Nc/Ps1Zv20Q9lu/ZJuADdVUdyG+znW5uqJvqzcw/qg/VOfWpuqiuZW1G/alercg19ZT6TD1QP6iX1fUkvlG/qBdzmn11WT0f3NIyST9wB7gERO0KcBx4BwwC34CFUspexSnqCeA+cABsAr+BCWAamIq+wC/gLfADOA2MAHXgXi8Qz9kEDmWjM8BwNVhOEcTtrI1mg/52v7AAXAC2gEY2XQLGge/A3VLKbsWp5RLHYonATo4dexgDXgLvgXPAbWAS+JsLD06tk4xr6iP1lvpEfax+apLxT3A6GelGi5FCxspI15ux7QzVo26przN/pW60WrmZEwocGaqU8k+9FrKl1+OmvjzPp5R7kZdSQp3uoU6E47qB/gOQuIqURS0s0gAAAABJRU5ErkJggg==",
+    # Cursor 3D cube with arrow logo
+    "CUR": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAB2klEQVR4nKVTPasaQRS9d2cZ3S9WVLZ9jbxCwpouIMJaCelsbCzfDwhBCPtAkkUQIYF0FvkHAQtthRT+hKQwFsE07w/IslusurMTxvf2sVnNIyGnmeHOuefee2YG4D+BT5xJAMA9zztxRqNR8teijuPI+eBsNiOc87OCeKHqqZJt288sy/rQaDQOiqIMx+PxdxEXIojI0wQ5J5Y4jlNijN1SSl8fj8eCJEkgSdLL4XD4KQiCj4h4lxWRMpWh1Wq9QMRv+/3etW27MJlMmKqqzPd9Sil9VSqVvrqu20ZE6PV65DHRcZyTYYj4XJblqziOoyRJeLPZJK7rkna7zX3fjxhjZULIteDW63XMdpBCJCYPo6HYFotF6Ha7OBgM5FqtxsMw3D+yLwiAmI9zDqJNgXs9gHK5DKqqAmPsN76cSxamoaZpsa7rsjBQCMznc1gul6xarcqmaRbOBCzLEo4iIeSHYRi+oigmpZRvt9tkOp3ier0GwzAKURQFlUplK7ibzYbn3wGKJvr9/lUQBO9M07w5HA4QhiHoug5xHH/e7XZvV6vVz5SbF4DsQafTaWqa9p4QYjDG3iwWiy+pR9mHdAlSescC6V6snuedmf5HZMlZwX+FGOmpHwu/ABVouKZUEbMGAAAAAElFTkSuQmCC",
+    # Antigravity 'A' hill/flame logo
+    "AG": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABJklEQVR4nJWTMS8FURCFz6wt0MhLqES8SCREq/JPVJT8hdf5B4oXhd9AKTqhkOg1Eq3ea+Xhk8vZdd9a+5jkZmYzs2fuzDlX6jCgAGa6aloNiPxHA4X+a8AKsJ0D/6VzAAvAEBjxZWdA37miC6C0P+DbXu1vp46D0YEbYOyT7MX+0Pl6P0V+/Yh4B+YlrWe5t8xvOa5vULZcpCdpyQAVSNXxoVlcZnFCRdKqpGdJe5L6PheSjiWNugCKNKSkZUmPEXHZ2M+5pCfPT+sIEYkldhOIC8M1Y0mbkuYi4rpiq42+gbd9Xy02y506N5igE1MC7LvgCtjIRPUpHqAHnLgm7aOmPQU75vqoEslvYnGju4k8sAisZd8/5JrLGJhtlXQaZ9qDaT7vD6VbNDWiEUxAAAAAAElFTkSuQmCC",
 }
 
 
@@ -131,24 +142,35 @@ def render_title_cycling(statuses: list) -> list[str]:
             if m.short_label == "$":
                 all_parts.append(f"{m.extra or f'${m.pct:.0f}%'}")
             elif m.pct < 0:
-                # Unlimited — no bar, just show symbol
-                all_parts.append(f"{m.short_label}")
+                # Unlimited — show text instead of symbol
+                all_parts.append("Unlimited")
             else:
                 bar = _mini_bar(m.pct)
                 all_parts.append(f"{m.short_label} {bar} {m.pct:.0f}%")
 
     if not all_parts:
-        # No provider has metrics — show a simple fallback (no cycling)
+        # No provider has metrics — show provider name as fallback
         hex_c = _color_hex("green")
-        return [f" OK | sfimage=sparkles sfsize=14 size=12 font=SF-Mono-Medium color={hex_c}"]
+        short_name = statuses[0].short_name if statuses else ""
+        name = statuses[0].name if statuses else "AI"
+        logo = PROVIDER_LOGOS.get(short_name, "")
+        if logo:
+            return [f" {short_name} | templateImage={logo} size=12 font=SF-Mono-Medium color={hex_c}"]
+        return [f" {short_name} | sfimage=sparkles sfsize=14 size=12 font=SF-Mono-Medium color={hex_c}"]
 
     hex_c = _color_hex(worst_overall)
-    # Anthropic "A" logo as 16x16 template image
-    logo = "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAALklEQVR4nGP4z4AfEpDGVAAClCiAAZopgEmhKKGmAnRAngIsbFwhCOcTrQAnBAD5KzbYyX/0zQAAAABJRU5ErkJggg=="
+    # Pick provider-specific logo (fall back to generic sparkles SF Symbol)
+    short_name = statuses[0].short_name if statuses else ""
+    logo = PROVIDER_LOGOS.get(short_name, "")
+    if logo:
+        return [
+            f" {' · '.join(all_parts)} "
+            f"| templateImage={logo} "
+            f"size=11 font=SF-Mono-Medium color={hex_c}"
+        ]
     return [
         f" {' · '.join(all_parts)} "
-        f"| templateImage={logo} "
-        f"size=11 font=SF-Mono-Medium color={hex_c}"
+        f"| sfimage=sparkles size=11 font=SF-Mono-Medium color={hex_c}"
     ]
 
 
