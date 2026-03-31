@@ -3,7 +3,7 @@
   "thresholds": {
     "yellow": 80,
     "orange": 90,
-    "red": 150
+    "red": 100
   },
   "progress_bar": {
     "filled": "█",
@@ -11,12 +11,15 @@
     "width": 4
   },
   "anthropic": {
-    "enabled": true
+    "enabled": true,
+    "refresh_interval_minutes": 3
   },
   "cursor": {
-    "enabled": true
+    "enabled": true,
+    "refresh_interval_minutes": 10
   },
   "antigravity": {
-    "enabled": true
+    "enabled": true,
+    "refresh_interval_minutes": 2
   }
 }
