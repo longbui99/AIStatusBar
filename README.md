@@ -17,7 +17,7 @@ SwiftBar plugins that show AI service usage and limits in your macOS menu bar. E
 ### Homebrew (recommended)
 
 ```bash
-brew install longbui99/AIStatusBar/ai-status-bar & ai-status-bar activate
+brew reinstall longbui99/AIStatusBar/ai-status-bar && ai-status-bar activate
 ```
 
 A sparkle icon (✦) appears in your menu bar. Click it to enable the providers you want.
@@ -195,8 +195,7 @@ def fetch_status(config: dict, global_config: dict | None = None) -> ProviderSta
 ### Homebrew
 
 ```bash
-ai-status-bar uninstall
-brew uninstall ai-status-bar
+ai-status-bar uninstall && brew uninstall ai-status-bar
 ```
 
 > **Important:** If you installed via Homebrew, you must also uninstall via Homebrew. Do not mix install methods — running `ai-status-bar uninstall` alone will remove plugins but leave the Homebrew formula installed.
