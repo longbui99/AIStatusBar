@@ -1,5 +1,6 @@
 ### Generated plugin scripts (created by install.sh from config.json)
 ai-*.py
+!ai-manager.1h.py
 
 ### Python template
 # Byte-compiled / optimized / DLL files
