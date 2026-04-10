@@ -56,6 +56,7 @@ ${BOLD}USAGE${NC}
     ai-status-bar <command>
 
 ${BOLD}COMMANDS${NC}
+    activate    Install SwiftBar + manager plugin, launch menu bar
     setup       First-time setup — choose providers and install
     install     Install SwiftBar and enable configured providers
     uninstall   Remove plugins and optionally uninstall SwiftBar
@@ -414,9 +415,47 @@ cmd_update() {
     info "Updated to latest version."
 }
 
+cmd_activate() {
+    header "AI Status Bar — Activate"
+    check_prereqs
+
+    # Install SwiftBar if missing
+    if ! brew list --cask swiftbar &>/dev/null; then
+        info "Installing SwiftBar via Homebrew..."
+        brew install --cask swiftbar
+    else
+        info "SwiftBar already installed."
+    fi
+
+    # Set up plugin directory
+    mkdir -p "$PLUGIN_DIR"
+
+    # Symlink manager plugin
+    if [ -f "$SCRIPT_DIR/ai-manager.1h.py" ]; then
+        rm -f "$PLUGIN_DIR/ai-manager.1h.py" 2>/dev/null || true
+        ln -sf "$SCRIPT_DIR/ai-manager.1h.py" "$PLUGIN_DIR/ai-manager.1h.py"
+        info "Manager plugin installed."
+    fi
+
+    # Point SwiftBar to the plugin directory and launch
+    defaults write com.ameba.SwiftBar PluginDirectory "$PLUGIN_DIR"
+    killall SwiftBar 2>/dev/null || true
+    sleep 1
+
+    SWIFTBAR_APP="$(find /opt/homebrew/Caskroom/swiftbar /Applications -name 'SwiftBar.app' -maxdepth 3 2>/dev/null | head -1)"
+    if [ -n "$SWIFTBAR_APP" ]; then
+        open "$SWIFTBAR_APP"
+        info "SwiftBar launched."
+    fi
+
+    printf '\n'
+    info "Done! Click the sparkle icon in your menu bar to enable providers."
+}
+
 # ── Main dispatcher ──
 case "${1:-help}" in
     setup)      cmd_setup ;;
+    activate)   cmd_activate ;;
     install)    cmd_install ;;
     uninstall)  cmd_uninstall ;;
     update)     cmd_update ;;
