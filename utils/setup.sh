@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # AI Status Bar — https://github.com/longbui99/AIStatusBar
-# curl -fsSL https://raw.githubusercontent.com/longbui99/AIStatusBar/main/setup.sh | bash
+# curl -fsSL https://raw.githubusercontent.com/longbui99/AIStatusBar/main/utils/setup.sh | bash
 
 REPO="https://github.com/longbui99/AIStatusBar.git"
 DIR="$HOME/.ai-status-bar"

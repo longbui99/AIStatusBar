@@ -29,7 +29,7 @@ ai-status-bar setup
 ### Shell script
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/longbui99/AIStatusBar/main/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/longbui99/AIStatusBar/main/utils/setup.sh | bash
 ```
 
 The installer will:
