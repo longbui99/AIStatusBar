@@ -186,6 +186,7 @@ with open('$CONFIG', 'w') as f:
     printf '\n'
     printf '  %s  $ ai-status-bar config\n' "${DIM}Configure:${NC}"
     printf '  %s     $ ai-status-bar status\n' "${DIM}Status:${NC}"
+    printf '  %s     $ ai-status-bar update\n' "${DIM}Update:${NC}"
     printf '  %s  $ ai-status-bar uninstall\n' "${DIM}Uninstall:${NC}"
     printf '\n'
 }
