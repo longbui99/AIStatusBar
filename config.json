@@ -11,7 +11,7 @@
     "width": 4
   },
   "anthropic": {
-    "enabled": true,
+    "enabled": false,
     "refresh_interval_minutes": 3
   },
   "cursor": {
