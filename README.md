@@ -23,7 +23,7 @@ brew install longbui99/AIStatusBar/ai-status-bar
 Then run the setup wizard:
 
 ```bash
-ai-status-bar setup
+ai-status-bar activate
 ```
 
 ### Shell script

@@ -226,10 +226,12 @@ cmd_install() {
     find "$PLUGIN_DIR" -maxdepth 1 -name 'ai-*.py' ! -name 'ai-manager.*' -delete 2>/dev/null || true
     find "$SCRIPT_DIR" -maxdepth 1 -name 'ai-*.py' ! -name 'ai-manager.*' -delete 2>/dev/null || true
 
-    # Ensure manager plugin is symlinked
+    # Copy manager plugin with hardcoded path
     if [ -f "$SCRIPT_DIR/ai-manager.1h.py" ]; then
         rm -f "$PLUGIN_DIR/ai-manager.1h.py" 2>/dev/null || true
-        ln -s "$SCRIPT_DIR/ai-manager.1h.py" "$PLUGIN_DIR/ai-manager.1h.py"
+        sed "s|^SCRIPT_DIR = .*|SCRIPT_DIR = Path(\"$SCRIPT_DIR\")|" \
+            "$SCRIPT_DIR/ai-manager.1h.py" > "$PLUGIN_DIR/ai-manager.1h.py"
+        chmod +x "$PLUGIN_DIR/ai-manager.1h.py"
     fi
 
     # Generate plugin scripts by auto-discovering providers
@@ -430,10 +432,12 @@ cmd_activate() {
     # Set up plugin directory
     mkdir -p "$PLUGIN_DIR"
 
-    # Symlink manager plugin
+    # Copy manager plugin with hardcoded path (SwiftBar can't follow symlinks to Cellar)
     if [ -f "$SCRIPT_DIR/ai-manager.1h.py" ]; then
         rm -f "$PLUGIN_DIR/ai-manager.1h.py" 2>/dev/null || true
-        ln -sf "$SCRIPT_DIR/ai-manager.1h.py" "$PLUGIN_DIR/ai-manager.1h.py"
+        sed "s|^SCRIPT_DIR = .*|SCRIPT_DIR = Path(\"$SCRIPT_DIR\")|" \
+            "$SCRIPT_DIR/ai-manager.1h.py" > "$PLUGIN_DIR/ai-manager.1h.py"
+        chmod +x "$PLUGIN_DIR/ai-manager.1h.py"
         info "Manager plugin installed."
     fi
 
