@@ -14,6 +14,20 @@ SwiftBar plugins that show AI service usage and limits in your macOS menu bar. E
 
 ## Install
 
+### Homebrew (recommended)
+
+```bash
+brew install longbui99/AIStatusBar/ai-status-bar
+```
+
+Then run the setup wizard:
+
+```bash
+ai-status-bar setup
+```
+
+### Shell script
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/longbui99/AIStatusBar/main/setup.sh | bash
 ```
@@ -191,6 +205,10 @@ python3 ai-antigravity.2m.py
 ```
 
 Logs are written to `ai-status.log` in the project directory.
+
+## License
+
+GPL-3.0 — free to use, but modifications must be contributed back. See [LICENSE.md](LICENSE.md).
 
 ## Author
 

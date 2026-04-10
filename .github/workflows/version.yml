@@ -1,0 +1,183 @@
+# Semantic versioning from conventional commits
+#
+# MAJOR  feat!: / fix!: / BREAKING CHANGE in body
+# MINOR  feat:
+# PATCH  fix: / perf:
+# BUILD  docs: style: refactor: test: build: ci: chore: revert: deps: temp: release: security:
+#        → tags as v1.2.3-<sha6> (no version bump)
+#
+# Cleanup: build tags (v*-*) older than 1 month are auto-deleted
+
+name: Version
+
+on:
+  push:
+    branches: [main, sandbox]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: version-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag Version
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Parse commit message
+        id: parse
+        run: |
+          SUBJECT=$(git log -1 --format='%s' HEAD)
+          BODY=$(git log -1 --format='%b' HEAD)
+
+          echo "subject: $SUBJECT"
+
+          echo "body<<__BODY_DELIM_EOF__" >> "$GITHUB_OUTPUT"
+          echo "$BODY" >> "$GITHUB_OUTPUT"
+          echo "__BODY_DELIM_EOF__" >> "$GITHUB_OUTPUT"
+
+          # GitHub merge commit: conventional commit is in body
+          # Squash merge / direct push: conventional commit is the subject
+          if echo "$SUBJECT" | grep -qE '^Merge pull request #[0-9]+'; then
+            CC_LINE=$(echo "$BODY" | grep -m1 -E '^[a-z]+(\([^)]*\))?!?:\s' || echo "")
+          elif echo "$SUBJECT" | grep -qE '^Merge branch '; then
+            CC_LINE=$(echo "$BODY" | grep -m1 -E '^[a-z]+(\([^)]*\))?!?:\s' || echo "")
+          else
+            CC_LINE="$SUBJECT"
+          fi
+
+          echo "cc_line: $CC_LINE"
+
+          if echo "$CC_LINE" | grep -qE '^[a-z]+(\([^)]*\))?!?:\s'; then
+            echo "cc_line=$CC_LINE" >> "$GITHUB_OUTPUT"
+            echo "valid=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cc_line=" >> "$GITHUB_OUTPUT"
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No conventional commit found in: $SUBJECT"
+          fi
+
+      - name: Determine bump type
+        id: bump
+        env:
+          CC_LINE: ${{ steps.parse.outputs.cc_line }}
+          VALID: ${{ steps.parse.outputs.valid }}
+          BODY: ${{ steps.parse.outputs.body }}
+        run: |
+          if [ "$VALID" != "true" ]; then
+            echo "bump=none" >> "$GITHUB_OUTPUT"
+            echo "No valid conventional commit — no bump"
+            exit 0
+          fi
+
+          TYPE=$(echo "$CC_LINE" | sed -E 's/^([a-z]+)(\([^)]*\))?!?:.*/\1/')
+          HAS_BANG=$(echo "$CC_LINE" | grep -cE '^[a-z]+(\([^)]*\))?!:' || true)
+
+          HAS_BREAKING_BODY=0
+          if echo "$BODY" | grep -qE '^BREAKING CHANGE:'; then
+            HAS_BREAKING_BODY=1
+          fi
+
+          if [ "$HAS_BANG" -gt 0 ] || [ "$HAS_BREAKING_BODY" -gt 0 ]; then
+            BUMP="major"
+          elif [ "$TYPE" = "feat" ]; then
+            BUMP="minor"
+          elif [ "$TYPE" = "fix" ] || [ "$TYPE" = "perf" ]; then
+            BUMP="patch"
+          else
+            BUMP="none"
+          fi
+
+          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
+          echo "type=$TYPE, bump=$BUMP"
+
+      - name: Resolve current version
+        id: version
+        run: |
+          # Find latest clean semver tag (no build metadata)
+          LATEST_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sed 's/^v//' \
+            | sort -t. -k1,1n -k2,2n -k3,3n \
+            | tail -1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            # Bootstrap: read from pyproject.toml
+            CURRENT=$(grep -E '^version\s*=' pyproject.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+            echo "Bootstrap: pyproject.toml v$CURRENT"
+          else
+            CURRENT="$LATEST_TAG"
+            echo "Latest clean tag: v$CURRENT"
+          fi
+
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "major=$(echo "$CURRENT" | cut -d. -f1)" >> "$GITHUB_OUTPUT"
+          echo "minor=$(echo "$CURRENT" | cut -d. -f2)" >> "$GITHUB_OUTPUT"
+          echo "patch=$(echo "$CURRENT" | cut -d. -f3)" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        id: tag
+        env:
+          BUMP: ${{ steps.bump.outputs.bump }}
+          CURRENT: ${{ steps.version.outputs.current }}
+          MAJOR: ${{ steps.version.outputs.major }}
+          MINOR: ${{ steps.version.outputs.minor }}
+          PATCH: ${{ steps.version.outputs.patch }}
+        run: |
+          SHA=$(git rev-parse --short=6 HEAD)
+
+          if [ "$BUMP" = "major" ]; then
+            TAG="v$((MAJOR + 1)).0.0"
+          elif [ "$BUMP" = "minor" ]; then
+            TAG="v${MAJOR}.$((MINOR + 1)).0"
+          elif [ "$BUMP" = "patch" ]; then
+            TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+          else
+            TAG="v${CURRENT}-${SHA}"
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          # Idempotency: skip if tag already exists
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::warning::Tag $TAG already exists — skipping"
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git tag "$TAG" HEAD
+          git push origin "$TAG"
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
+          echo "Pushed tag: $TAG"
+
+      - name: Cleanup stale build tags
+        if: steps.tag.outputs.skipped != 'true'
+        run: |
+          CUTOFF=$(date -d '1 month ago' +%s)
+          DELETED=0
+
+          for TAG in $(git tag -l 'v*-*'); do
+            TAG_DATE=$(git log -1 --format='%aI' "$TAG" 2>/dev/null)
+            [ -z "$TAG_DATE" ] && continue
+
+            TAG_EPOCH=$(date -d "$TAG_DATE" +%s 2>/dev/null)
+            [ -z "$TAG_EPOCH" ] && continue
+
+            if [ "$TAG_EPOCH" -lt "$CUTOFF" ]; then
+              echo "Deleting: $TAG ($TAG_DATE)"
+              git push origin --delete "$TAG" 2>/dev/null || true
+              git tag -d "$TAG" 2>/dev/null || true
+              DELETED=$((DELETED + 1))
+            fi
+          done
+
+          echo "Cleaned up $DELETED stale build tag(s)"

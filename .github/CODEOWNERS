@@ -1,0 +1,7 @@
+# Infrastructure Code Owners
+# These owners will be the default owners for everything in this repo.
+# Unless a later match takes precedence, @long-glacis will be requested for
+# review when someone opens a pull request.
+
+* @longbui99
+
