@@ -17,8 +17,7 @@ SwiftBar plugins that show AI service usage and limits in your macOS menu bar. E
 ### Homebrew (recommended)
 
 ```bash
-brew install longbui99/AIStatusBar/ai-status-bar
-ai-status-bar activate
+brew install longbui99/AIStatusBar/ai-status-bar & ai-status-bar activate
 ```
 
 A sparkle icon (✦) appears in your menu bar. Click it to enable the providers you want.

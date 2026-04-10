@@ -466,8 +466,9 @@ cmd_activate() {
         err "Could not find ai-manager.1h.py"
     fi
 
-    # Point SwiftBar to the plugin directory and launch
+    # Point SwiftBar to the plugin directory, enable all plugins, and launch
     defaults write com.ameba.SwiftBar PluginDirectory "$PLUGIN_DIR"
+    defaults write com.ameba.SwiftBar DisabledPlugins -array
     killall SwiftBar 2>/dev/null || true
     sleep 1
 
