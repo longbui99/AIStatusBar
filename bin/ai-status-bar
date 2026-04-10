@@ -421,6 +421,29 @@ cmd_activate() {
     header "AI Status Bar — Activate"
     check_prereqs
 
+    # Clean up old shell install if Homebrew version exists
+    local brew_bin="/opt/homebrew/bin/ai-status-bar"
+    local old_bin="$HOME/.local/bin/ai-status-bar"
+    if [ -f "$brew_bin" ] && [ -L "$old_bin" ]; then
+        rm -f "$old_bin"
+        warn "Removed old shell install at $old_bin (using Homebrew version now)."
+    fi
+    if [ -f "$brew_bin" ] && [ -d "$HOME/.ai-status-bar" ]; then
+        rm -rf "$HOME/.ai-status-bar"
+        warn "Removed old shell install at ~/.ai-status-bar/"
+    fi
+
+    # Re-resolve SCRIPT_DIR in case we just cleaned up the old install
+    local MANAGER_DIR="$SCRIPT_DIR"
+    if [ ! -f "$MANAGER_DIR/ai-manager.1h.py" ]; then
+        # Fallback: find Homebrew libexec
+        local cellar_dir
+        cellar_dir="$(find /opt/homebrew/Cellar/ai-status-bar -name 'ai-manager.1h.py' -maxdepth 3 2>/dev/null | head -1)"
+        if [ -n "$cellar_dir" ]; then
+            MANAGER_DIR="$(dirname "$cellar_dir")"
+        fi
+    fi
+
     # Install SwiftBar if missing
     if ! brew list --cask swiftbar &>/dev/null; then
         info "Installing SwiftBar via Homebrew..."
@@ -429,17 +452,18 @@ cmd_activate() {
         info "SwiftBar already installed."
     fi
 
-
     # Set up plugin directory
     mkdir -p "$PLUGIN_DIR"
 
     # Copy manager plugin with hardcoded path (SwiftBar can't follow symlinks to Cellar)
-    if [ -f "$SCRIPT_DIR/ai-manager.1h.py" ]; then
+    if [ -f "$MANAGER_DIR/ai-manager.1h.py" ]; then
         rm -f "$PLUGIN_DIR/ai-manager.1h.py" 2>/dev/null || true
-        sed "s|^SCRIPT_DIR = .*|SCRIPT_DIR = Path(\"$SCRIPT_DIR\")|" \
-            "$SCRIPT_DIR/ai-manager.1h.py" > "$PLUGIN_DIR/ai-manager.1h.py"
+        sed "s|^SCRIPT_DIR = .*|SCRIPT_DIR = Path(\"$MANAGER_DIR\")|" \
+            "$MANAGER_DIR/ai-manager.1h.py" > "$PLUGIN_DIR/ai-manager.1h.py"
         chmod +x "$PLUGIN_DIR/ai-manager.1h.py"
         info "Manager plugin installed."
+    else
+        err "Could not find ai-manager.1h.py"
     fi
 
     # Point SwiftBar to the plugin directory and launch

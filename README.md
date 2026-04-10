@@ -193,6 +193,17 @@ def fetch_status(config: dict, global_config: dict | None = None) -> ProviderSta
 
 ## Uninstall
 
+### Homebrew
+
+```bash
+ai-status-bar uninstall
+brew uninstall ai-status-bar
+```
+
+> **Important:** If you installed via Homebrew, you must also uninstall via Homebrew. Do not mix install methods — running `ai-status-bar uninstall` alone will remove plugins but leave the Homebrew formula installed.
+
+### Shell script
+
 ```bash
 ai-status-bar uninstall
 ```
