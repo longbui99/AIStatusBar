@@ -100,10 +100,10 @@ The `refresh_interval_minutes` value controls how often SwiftBar runs the plugin
 ```
 config.json ──→ ai-status-bar install ──→ ai-anthropic.3m.py ──→ symlink ──→ SwiftBar
                        ↑
-               plugin.template.py
+           utils/plugin.template.py
 ```
 
-`ai-status-bar install` auto-discovers providers from `providers/*.py`, reads each provider's config from `config.json`, renders `plugin.template.py`, and writes the result as `ai-{provider}.{interval}m.py`. Generated plugin files are gitignored.
+`ai-status-bar install` auto-discovers providers from `providers/*.py`, reads each provider's config from `config.json`, renders `utils/plugin.template.py`, and writes the result as `ai-{provider}.{interval}m.py`. Generated plugin files are gitignored.
 
 ## Configuration
 

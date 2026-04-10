@@ -10,7 +10,7 @@ while [ -L "$SOURCE" ]; do
 done
 SCRIPT_DIR="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 CONFIG="$SCRIPT_DIR/config.json"
-TEMPLATE="$SCRIPT_DIR/plugin.template.py"
+TEMPLATE="$SCRIPT_DIR/utils/plugin.template.py"
 PLUGIN_DIR="$HOME/Library/Application Support/SwiftBar/Plugins"
 
 # ── Auto-discover providers from providers/*.py ──
@@ -201,7 +201,7 @@ cmd_install() {
     fi
 
     if [ ! -f "$TEMPLATE" ]; then
-        err "plugin.template.py not found. Is the project intact?"
+        err "utils/plugin.template.py not found. Is the project intact?"
         exit 1
     fi
 
