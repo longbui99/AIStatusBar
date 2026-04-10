@@ -429,6 +429,7 @@ cmd_activate() {
         info "SwiftBar already installed."
     fi
 
+
     # Set up plugin directory
     mkdir -p "$PLUGIN_DIR"
 

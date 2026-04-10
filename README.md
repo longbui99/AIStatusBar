@@ -18,13 +18,18 @@ SwiftBar plugins that show AI service usage and limits in your macOS menu bar. E
 
 ```bash
 brew install longbui99/AIStatusBar/ai-status-bar
-```
-
-Then run the setup wizard:
-
-```bash
 ai-status-bar activate
 ```
+
+A sparkle icon (✦) appears in your menu bar. Click it to enable the providers you want.
+
+**Manager** — click the ✦ icon to toggle providers on/off:
+
+<img src=".github/images/menubar.png" width="280" alt="Manager — toggle providers on/off">
+
+**Provider detail** — shows usage, forecast, and reset time:
+
+<img src=".github/images/claude.png" width="280" alt="Claude provider — usage, forecast, reset time">
 
 ### Shell script
 
