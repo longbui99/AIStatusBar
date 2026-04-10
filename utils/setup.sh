@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# AI Status Bar — https://github.com/longbui99/AIStatusBar
-# curl -fsSL https://raw.githubusercontent.com/longbui99/AIStatusBar/main/utils/setup.sh | bash
+# AI Radar — https://github.com/longbui99/AIRadar
+# curl -fsSL https://raw.githubusercontent.com/longbui99/AIRadar/main/utils/setup.sh | bash
 
-REPO="https://github.com/longbui99/AIStatusBar.git"
-DIR="$HOME/.ai-status-bar"
+REPO="https://github.com/longbui99/AIRadar.git"
+DIR="$HOME/.ai-radar"
 BIN="$HOME/.local/bin"
 
 # Clone or update
@@ -19,18 +19,18 @@ fi
 
 # Link binary to PATH
 mkdir -p "$BIN"
-ln -sf "$DIR/bin/ai-status-bar" "$BIN/ai-status-bar"
-chmod +x "$DIR/bin/ai-status-bar"
+ln -sf "$DIR/bin/ai-radar" "$BIN/ai-radar"
+chmod +x "$DIR/bin/ai-radar"
 
 # Add to PATH if needed
 if ! echo "$PATH" | tr ':' '\n' | grep -q "$HOME/.local/bin"; then
     RC="$HOME/.zshrc"
     [ "$(basename "$SHELL")" = "bash" ] && RC="$HOME/.bashrc"
     echo '' >> "$RC"
-    echo '# AI Status Bar' >> "$RC"
+    echo '# AI Radar' >> "$RC"
     echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"
     export PATH="$BIN:$PATH"
 fi
 
 # Hand off to the real CLI — must use bash (not exec) so /dev/tty works after pipe
-bash "$BIN/ai-status-bar" setup </dev/tty
+bash "$BIN/ai-radar" setup </dev/tty

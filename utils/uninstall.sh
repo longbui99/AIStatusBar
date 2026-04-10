@@ -3,7 +3,7 @@ set -euo pipefail
 
 PLUGIN_DIR="$HOME/Library/Application Support/SwiftBar/Plugins"
 
-echo "=== AI Status Bar Uninstaller ==="
+echo "=== AI Radar Uninstaller ==="
 
 # 1. Stop SwiftBar
 if pgrep -q SwiftBar; then
@@ -29,4 +29,4 @@ else
 fi
 
 echo ""
-echo "Done! AI Status Bar has been removed."
+echo "Done! AI Radar has been removed."

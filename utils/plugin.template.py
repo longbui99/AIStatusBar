@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# <xbar.title>AI Status — {{DESCRIPTION}}</xbar.title>
+# <xbar.title>AI Radar — {{DESCRIPTION}}</xbar.title>
 # <xbar.desc>{{DESCRIPTION}} usage in the menu bar</xbar.desc>
 # <xbar.dependencies>python3</xbar.dependencies>
 import sys

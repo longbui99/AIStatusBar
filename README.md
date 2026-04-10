@@ -1,4 +1,4 @@
-# AI Status Bar
+# AI Radar
 
 > **macOS only** — requires SwiftBar, Homebrew, and Python 3.
 
@@ -17,7 +17,7 @@ SwiftBar plugins that show AI service usage and limits in your macOS menu bar. E
 ### Homebrew (recommended)
 
 ```bash
-brew reinstall longbui99/AIStatusBar/ai-status-bar && ai-status-bar activate
+brew reinstall longbui99/AIRadar/ai-radar && ai-radar activate
 ```
 
 A sparkle icon (✦) appears in your menu bar. Click it to enable the providers you want.
@@ -33,12 +33,12 @@ A sparkle icon (✦) appears in your menu bar. Click it to enable the providers 
 ### Shell script
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/longbui99/AIStatusBar/main/utils/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/longbui99/AIRadar/main/utils/setup.sh | bash
 ```
 
 The installer will:
-1. Clone the repo to `~/.ai-status-bar/`
-2. Install the `ai-status-bar` CLI to `~/.local/bin/`
+1. Clone the repo to `~/.ai-radar/`
+2. Install the `ai-radar` CLI to `~/.local/bin/`
 3. Ask which providers you want to enable
 4. Install SwiftBar via Homebrew (if missing)
 5. Launch the menu bar plugins
@@ -53,21 +53,21 @@ Re-run the same command to update.
 
 ## Usage
 
-After installation, everything is managed through the `ai-status-bar` command:
+After installation, everything is managed through the `ai-radar` command:
 
 ```bash
-ai-status-bar install     # Install SwiftBar + enable configured providers
-ai-status-bar uninstall   # Remove plugins, optionally uninstall SwiftBar
-ai-status-bar config      # Open config.json in your editor
-ai-status-bar status      # Show which providers are active
-ai-status-bar logs        # Tail the plugin log file
-ai-status-bar help        # Show help
+ai-radar install     # Install SwiftBar + enable configured providers
+ai-radar uninstall   # Remove plugins, optionally uninstall SwiftBar
+ai-radar config      # Open config.json in your editor
+ai-radar status      # Show which providers are active
+ai-radar logs        # Tail the plugin log file
+ai-radar help        # Show help
 ```
 
 ### Enabling / Disabling Providers
 
 ```bash
-ai-status-bar config
+ai-radar config
 ```
 
 This opens `config.json` where you toggle providers. Set `"enabled": true` to install, `false` to skip:
@@ -92,27 +92,27 @@ This opens `config.json` where you toggle providers. Set `"enabled": true` to in
 After changing, re-apply with:
 
 ```bash
-ai-status-bar install
+ai-radar install
 ```
 
 ### Changing Refresh Intervals
 
-The `refresh_interval_minutes` value controls how often SwiftBar runs the plugin. It becomes part of the generated filename (e.g. `ai-anthropic.3m.py`), which is how SwiftBar determines the schedule. Re-run `ai-status-bar install` after changing intervals.
+The `refresh_interval_minutes` value controls how often SwiftBar runs the plugin. It becomes part of the generated filename (e.g. `ai-anthropic.3m.py`), which is how SwiftBar determines the schedule. Re-run `ai-radar install` after changing intervals.
 
 ### How It Works
 
 ```
-config.json ──→ ai-status-bar install ──→ ai-anthropic.3m.py ──→ symlink ──→ SwiftBar
+config.json ──→ ai-radar install ──→ ai-anthropic.3m.py ──→ symlink ──→ SwiftBar
                        ↑
            utils/plugin.template.py
 ```
 
-`ai-status-bar install` auto-discovers providers from `providers/*.py`, reads each provider's config from `config.json`, renders `utils/plugin.template.py`, and writes the result as `ai-{provider}.{interval}m.py`. Generated plugin files are gitignored.
+`ai-radar install` auto-discovers providers from `providers/*.py`, reads each provider's config from `config.json`, renders `utils/plugin.template.py`, and writes the result as `ai-{provider}.{interval}m.py`. Generated plugin files are gitignored.
 
 ## Configuration
 
 ```bash
-ai-status-bar config
+ai-radar config
 ```
 
 ### Global Settings
@@ -177,7 +177,7 @@ def fetch_status(config: dict, global_config: dict | None = None) -> ProviderSta
     # ... fetch and return status
 ```
 
-2. Add a section to `config.json` via `ai-status-bar config`:
+2. Add a section to `config.json` via `ai-radar config`:
 
 ```json
 {
@@ -188,29 +188,29 @@ def fetch_status(config: dict, global_config: dict | None = None) -> ProviderSta
 }
 ```
 
-3. Re-run `ai-status-bar install` — providers are auto-discovered from `providers/*.py`.
+3. Re-run `ai-radar install` — providers are auto-discovered from `providers/*.py`.
 
 ## Uninstall
 
 ### Homebrew
 
 ```bash
-ai-status-bar uninstall && brew uninstall ai-status-bar
+ai-radar uninstall && brew uninstall ai-radar
 ```
 
-> **Important:** If you installed via Homebrew, you must also uninstall via Homebrew. Do not mix install methods — running `ai-status-bar uninstall` alone will remove plugins but leave the Homebrew formula installed.
+> **Important:** If you installed via Homebrew, you must also uninstall via Homebrew. Do not mix install methods — running `ai-radar uninstall` alone will remove plugins but leave the Homebrew formula installed.
 
 ### Shell script
 
 ```bash
-ai-status-bar uninstall
+ai-radar uninstall
 ```
 
 Removes plugin symlinks, generated files, and optionally uninstalls SwiftBar.
 
 ## Testing
 
-Generate plugins first with `ai-status-bar install`, then run directly:
+Generate plugins first with `ai-radar install`, then run directly:
 
 ```bash
 python3 ai-anthropic.3m.py
@@ -218,7 +218,7 @@ python3 ai-cursor.10m.py
 python3 ai-antigravity.2m.py
 ```
 
-Logs are written to `ai-status.log` in the project directory.
+Logs are written to `ai-radar.log` in the project directory.
 
 ## License
 

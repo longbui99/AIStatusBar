@@ -1,4 +1,4 @@
-"""Antigravity IDE provider for AI Status Bar."""
+"""Antigravity IDE provider for AI Radar."""
 
 from __future__ import annotations
 

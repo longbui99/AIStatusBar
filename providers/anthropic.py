@@ -1,4 +1,4 @@
-"""Anthropic (Claude) provider for AI Status Bar."""
+"""Anthropic (Claude) provider for AI Radar."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ API_VERSION = "2023-06-01"
 OAUTH_TOKEN_URL = "https://platform.claude.com/v1/oauth/token"
 OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 KEYCHAIN_SERVICE = "Claude Code-credentials"
-_CACHE_DIR = Path.home() / ".cache" / "ai-status-bar"
+_CACHE_DIR = Path.home() / ".cache" / "ai-radar"
 _CACHE_DIR.mkdir(parents=True, exist_ok=True)
 _CACHE_FILE = _CACHE_DIR / "usage_cache.json"
 

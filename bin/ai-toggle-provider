@@ -43,4 +43,4 @@ p.write_text(json.dumps(config, indent=2, ensure_ascii=False) + '\n')
 "
 
 # Regenerate plugins
-"$SCRIPT_DIR/bin/ai-status-bar" install
+"$SCRIPT_DIR/bin/ai-radar" install

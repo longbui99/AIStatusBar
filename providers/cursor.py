@@ -1,4 +1,4 @@
-"""Cursor IDE provider for AI Status Bar."""
+"""Cursor IDE provider for AI Radar."""
 
 from __future__ import annotations
 

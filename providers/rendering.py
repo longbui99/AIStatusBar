@@ -1,4 +1,4 @@
-"""Rendering engine for AI Status Bar — beautiful SwiftBar output."""
+"""Rendering engine for AI Radar — beautiful SwiftBar output."""
 from __future__ import annotations
 
 import base64

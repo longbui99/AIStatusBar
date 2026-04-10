@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# <xbar.title>AI Status Bar — Manager</xbar.title>
-# <xbar.desc>Configure AI Status Bar providers</xbar.desc>
+# <xbar.title>AI Radar — Manager</xbar.title>
+# <xbar.desc>Configure AI Radar providers</xbar.desc>
 # <xbar.dependencies>python3</xbar.dependencies>
 
 import json
@@ -55,7 +55,7 @@ def main() -> None:
     # Title — small sparkle icon
     print(f"\u2726 | sfimage=sparkles size=13 color={COLORS['blue']}")
     print("---")
-    print(f"AI Status Bar | size=13 font=SF-Pro-Text-Semibold color={COLORS['white']}")
+    print(f"AI Radar | size=13 font=SF-Pro-Text-Semibold color={COLORS['white']}")
     print("---")
 
     # Provider toggles

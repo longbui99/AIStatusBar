@@ -111,7 +111,7 @@ def render_single(status: ProviderStatus) -> None:
 def run_provider(provider_key: str) -> None:
     """Entry point for a per-provider SwiftBar plugin."""
     logging.basicConfig(
-        filename=SCRIPT_DIR / "ai-status.log",
+        filename=SCRIPT_DIR / "ai-radar.log",
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )

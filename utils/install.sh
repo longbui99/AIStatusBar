@@ -6,7 +6,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/SwiftBar/Plugins"
 CONFIG="$SCRIPT_DIR/config.json"
 TEMPLATE="$SCRIPT_DIR/plugin.template.py"
 
-echo "=== AI Status Bar Installer ==="
+echo "=== AI Radar Installer ==="
 
 # 0. Check config exists
 if [ ! -f "$CONFIG" ]; then
