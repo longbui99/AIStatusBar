@@ -225,6 +225,12 @@ cmd_install() {
     find "$PLUGIN_DIR" -maxdepth 1 -name 'ai-*.py' ! -name 'ai-manager.*' -delete 2>/dev/null || true
     find "$SCRIPT_DIR" -maxdepth 1 -name 'ai-*.py' ! -name 'ai-manager.*' -delete 2>/dev/null || true
 
+    # Ensure manager plugin is symlinked
+    if [ -f "$SCRIPT_DIR/ai-manager.1h.py" ]; then
+        rm -f "$PLUGIN_DIR/ai-manager.1h.py" 2>/dev/null || true
+        ln -s "$SCRIPT_DIR/ai-manager.1h.py" "$PLUGIN_DIR/ai-manager.1h.py"
+    fi
+
     # Generate plugin scripts by auto-discovering providers
     COUNT=0
     while IFS=':' read -r provider_key full_name; do
