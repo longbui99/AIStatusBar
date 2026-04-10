@@ -133,7 +133,7 @@ jobs:
           MINOR: ${{ steps.version.outputs.minor }}
           PATCH: ${{ steps.version.outputs.patch }}
         run: |
-          SHA=$(git rev-parse --short=6 HEAD)
+          SHA=$(git rev-parse --short=7 HEAD)
 
           if [ "$BUMP" = "major" ]; then
             TAG="v$((MAJOR + 1)).0.0"
