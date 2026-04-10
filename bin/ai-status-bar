@@ -220,10 +220,10 @@ cmd_install() {
         exit 1
     fi
 
-    # Clean up old plugins
+    # Clean up old provider plugins (keep manager)
     mkdir -p "$PLUGIN_DIR"
-    rm -f "$PLUGIN_DIR"/ai-status.*.py "$PLUGIN_DIR"/ai-*.py 2>/dev/null || true
-    rm -f "$SCRIPT_DIR"/ai-*.py 2>/dev/null || true
+    find "$PLUGIN_DIR" -maxdepth 1 -name 'ai-*.py' ! -name 'ai-manager.*' -delete 2>/dev/null || true
+    find "$SCRIPT_DIR" -maxdepth 1 -name 'ai-*.py' ! -name 'ai-manager.*' -delete 2>/dev/null || true
 
     # Generate plugin scripts by auto-discovering providers
     COUNT=0

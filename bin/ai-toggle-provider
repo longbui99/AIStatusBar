@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ── Resolve project root (follow symlinks) ──
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+    DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+
+PROVIDER_KEY="${1:-}"
+if [ -z "$PROVIDER_KEY" ]; then
+    echo "Usage: ai-toggle-provider <provider_key>"
+    exit 1
+fi
+
+CONFIG="$SCRIPT_DIR/config.json"
+
+# Toggle the provider in config.json
+python3 -c "
+import json
+from pathlib import Path
+
+p = Path('$CONFIG')
+if p.exists():
+    config = json.loads(p.read_text())
+else:
+    config = {
+        'working_hours_per_day': 24,
+        'thresholds': {'yellow': 80, 'orange': 90, 'red': 100},
+        'progress_bar': {'filled': '\u2588', 'empty': '\u2592', 'width': 4},
+    }
+
+key = '$PROVIDER_KEY'
+if key not in config:
+    config[key] = {'enabled': True, 'refresh_interval_minutes': 5}
+else:
+    config[key]['enabled'] = not config[key].get('enabled', False)
+
+p.write_text(json.dumps(config, indent=2, ensure_ascii=False) + '\n')
+"
+
+# Regenerate plugins
+"$SCRIPT_DIR/bin/ai-status-bar" install
