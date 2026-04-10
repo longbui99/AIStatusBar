@@ -110,56 +110,34 @@ BANNER
 
     check_prereqs
 
-    # ── Provider descriptions ──
-    printf '%s\n\n' "${BOLD}Which providers would you like to enable?${NC}"
-    printf '  %s\n' "${DIM}Claude Code — uses your Claude Code OAuth token from macOS Keychain."
-    printf '  %s\n' "  Just run 'claude login' if you haven't already."
-    printf '  %s\n' "Cursor — reads tokens from Cursor IDE. Only works if Cursor is installed."
-    printf '  %s\n\n' "Google Antigravity — connects to Antigravity IDE. Only works if Antigravity is installed.${NC}"
-
-    # ── Read defaults from config.json ──
-    local global_config="{}"
     if [ -f "$CONFIG" ]; then
-        global_config=$(python3 -c "import json; print(json.dumps(json.load(open('$CONFIG'))))")
-    fi
+        info "Found existing config.json — skipping provider selection."
+    else
+        # ── Provider descriptions ──
+        printf '%s\n\n' "${BOLD}Which providers would you like to enable?${NC}"
+        printf '  %s\n' "${DIM}Claude Code — uses your Claude Code OAuth token from macOS Keychain."
+        printf '  %s\n' "  Just run 'claude login' if you haven't already."
+        printf '  %s\n' "Cursor — reads tokens from Cursor IDE. Only works if Cursor is installed."
+        printf '  %s\n\n' "Google Antigravity — connects to Antigravity IDE. Only works if Antigravity is installed.${NC}"
 
-    # ── Ask about each provider ──
-    local selections=""
-    while IFS=':' read -r key full_name <&3; do
-        local default_enabled
-        default_enabled=$(python3 -c "
-import json
-c = json.loads('$global_config')
-print('Y' if c.get('$key', {}).get('enabled', False) else 'N')
-" 2>/dev/null || echo "N")
+        # ── Ask about each provider ──
+        local selections=""
+        while IFS=':' read -r key full_name <&3; do
+            printf "  %s? [y/N] " "$full_name"
+            local answer
+            read -r answer </dev/tty 2>/dev/null || read -r answer
 
-        local prompt_hint
-        if [ "$default_enabled" = "Y" ]; then
-            prompt_hint="Y/n"
-        else
-            prompt_hint="y/N"
-        fi
+            if [[ "$answer" =~ ^[Yy]$ ]]; then
+                selections="$selections $key:true"
+            else
+                selections="$selections $key:false"
+            fi
+        done 3< <(discover_providers)
 
-        printf "  %s? [%s] " "$full_name" "$prompt_hint"
-        local answer
-        read -r answer </dev/tty 2>/dev/null || read -r answer
-
-        if [ -z "$answer" ]; then
-            answer="$default_enabled"
-        fi
-
-        if [[ "$answer" =~ ^[Yy]$ ]]; then
-            selections="$selections $key:true"
-        else
-            selections="$selections $key:false"
-        fi
-    done 3< <(discover_providers)
-
-    # ── Write config.json ──
-    python3 -c "
+        # ── Write config.json ──
+        python3 -c "
 import json; from pathlib import Path
-p = Path('$CONFIG')
-config = json.load(open(p)) if p.exists() else {
+config = {
     'working_hours_per_day': 24,
     'thresholds': {'yellow': 80, 'orange': 90, 'red': 100},
     'progress_bar': {'filled': '█', 'empty': '▒', 'width': 4}
@@ -167,14 +145,13 @@ config = json.load(open(p)) if p.exists() else {
 for item in '$selections'.split():
     if not item: continue
     key, enabled = item.split(':')
-    if key not in config:
-        config[key] = {'refresh_interval_minutes': 5}
-    config[key]['enabled'] = enabled == 'true'
+    config[key] = {'enabled': enabled == 'true', 'refresh_interval_minutes': 5}
 with open('$CONFIG', 'w') as f:
     json.dump(config, f, indent=2, ensure_ascii=False)
     f.write('\n')
 "
-    info "Saved config.json"
+        info "Saved config.json"
+    fi
 
     # ── Run install ──
     printf '\n'

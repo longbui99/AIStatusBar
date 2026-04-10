@@ -20,12 +20,6 @@ SwiftBar plugins that show AI service usage and limits in your macOS menu bar. E
 brew install longbui99/AIStatusBar/ai-status-bar
 ```
 
-Then run the setup wizard:
-
-```bash
-ai-status-bar setup
-```
-
 ### Shell script
 
 ```bash
