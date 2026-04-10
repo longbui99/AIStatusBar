@@ -308,3 +308,4 @@ local/
 storage/
 .usage_cache.json__pycache__/
 .usage_cache.json
+homebrew-*/
