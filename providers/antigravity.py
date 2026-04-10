@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 PROVIDER_KEY = "antigravity"
 DISPLAY_NAME = "AG"
+FULL_NAME = "Google Antigravity"
 
 GRPC_PATH = "/exa.language_server_pb.LanguageServerService/GetUserStatus"
 CLOUD_API_URL = (

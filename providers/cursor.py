@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 PROVIDER_KEY = "cursor"
 DISPLAY_NAME = "CUR"
+FULL_NAME = "Cursor"
 
 USAGE_URL = "https://api2.cursor.sh/auth/usage"
 PROFILE_URL = "https://api2.cursor.sh/auth/full_stripe_profile"

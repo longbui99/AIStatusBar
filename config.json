@@ -15,11 +15,11 @@
     "refresh_interval_minutes": 3
   },
   "cursor": {
-    "enabled": true,
+    "enabled": false,
     "refresh_interval_minutes": 10
   },
   "antigravity": {
-    "enabled": true,
+    "enabled": false,
     "refresh_interval_minutes": 2
   }
 }

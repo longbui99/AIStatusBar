@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 PROVIDER_KEY = "anthropic"
 DISPLAY_NAME = "CLD"
+FULL_NAME = "Claude Code"
 
 API_BASE = "https://api.anthropic.com"
 API_VERSION = "2023-06-01"
@@ -394,7 +395,7 @@ def fetch_status(config: dict, global_config: dict | None = None) -> ProviderSta
             bar_parts = []
 
             if five_h:
-                pct5 = five_h.get("utilization", 0)
+                pct5 = five_h.get("utilization") or 0
                 reset5_raw = five_h.get("resets_at", "")
                 fc5 = _forecast_color(pct5, reset5_raw, 5)
                 fp5 = _forecast_pct(pct5, reset5_raw, 5)
@@ -412,7 +413,7 @@ def fetch_status(config: dict, global_config: dict | None = None) -> ProviderSta
                 )
 
             if seven_d:
-                pct7 = seven_d.get("utilization", 0)
+                pct7 = seven_d.get("utilization") or 0
                 reset7_raw = seven_d.get("resets_at", "")
                 fc7 = _forecast_color(pct7, reset7_raw, 168)
                 fp7 = _forecast_pct(pct7, reset7_raw, 168)
@@ -431,7 +432,7 @@ def fetch_status(config: dict, global_config: dict | None = None) -> ProviderSta
 
             sonnet = usage.get("seven_day_sonnet")
             if sonnet:
-                pct_s = sonnet.get("utilization", 0)
+                pct_s = sonnet.get("utilization") or 0
                 reset_s_raw = sonnet.get("resets_at", "")
                 fc_s = _forecast_color(pct_s, reset_s_raw, 168)
                 fp_s = _forecast_pct(pct_s, reset_s_raw, 168)
@@ -449,9 +450,9 @@ def fetch_status(config: dict, global_config: dict | None = None) -> ProviderSta
                 )
 
             if extra and extra.get("is_enabled"):
-                used = extra.get("used_credits", 0)
-                limit_val = extra.get("monthly_limit", 0)
-                epct = extra.get("utilization", 0)
+                used = extra.get("used_credits", 0) or 0
+                limit_val = extra.get("monthly_limit") or 0
+                epct = extra.get("utilization") or 0
                 now = datetime.utcnow()
                 day_of_month = now.day
                 days_in_month = 30
@@ -464,7 +465,8 @@ def fetch_status(config: dict, global_config: dict | None = None) -> ProviderSta
                     projected_pct = epct
                 fc_e = _pct_color(projected_pct)
                 worst_color = _worst(worst_color, fc_e)
-                bar_parts.append(f"{_fmt_money(used)}/{_fmt_money(limit_val)}")
+                limit_display = _fmt_money(limit_val) if limit_val else "unlimited"
+                bar_parts.append(f"{_fmt_money(used)}/{limit_display}")
                 metrics.append(
                     MetricData(
                         label="Extra Credits",
@@ -473,7 +475,7 @@ def fetch_status(config: dict, global_config: dict | None = None) -> ProviderSta
                         forecast_pct=projected_pct,
                         color=fc_e,
                         reset_label="month end",
-                        extra=f"{_fmt_money(used)} / {_fmt_money(limit_val)}",
+                        extra=f"{_fmt_money(used)} / {limit_display}",
                     )
                 )
 
